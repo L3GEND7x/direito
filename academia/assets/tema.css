@@ -78,6 +78,14 @@ a { color: var(--accent) !important; }
 .fl-cab .sobre { font-size: var(--fs-small); color: var(--text-2); text-transform: uppercase; letter-spacing: .04em; margin-top: 6px; }
 .fl-cab h1 { font-size: var(--fs-title-1) !important; margin: 2px 0 0 !important; padding: 0 !important; }
 
+/* ícones: até a fonte de ícones carregar (classe fl-icones, posta por ui.AJUSTES_PAGINA), o espaço do ícone fica
+   vazio; o nome do ícone ("play_arrow", "home"...) nunca aparece como texto por cima do rótulo */
+html:not(.fl-icones) [data-testid="stIconMaterial"], html:not(.fl-icones) .stApp span[role="img"] {
+  color: transparent !important; display: inline-block; overflow: hidden; white-space: nowrap; max-width: 1em; vertical-align: middle;
+}
+/* o iframe dos ajustes da página não ocupa espaço */
+.stApp [data-testid="stElementContainer"]:has(> iframe[height="0"]), .stApp .element-container:has(> iframe[height="0"]) { display: none; }
+
 /* ------------------------------------------------------------ barra de abas inferior */
 .stApp .st-key-aba {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 999; margin: 0 !important; width: auto !important; max-width: none !important;

@@ -11,6 +11,36 @@ def tema_css() -> str:
     return f"<style>{_CSS.read_text(encoding='utf-8')}</style>"
 
 
+# Roda no documento do app (o iframe do componente tem a mesma origem):
+# - declara a página em português e sem tradução automática: o tradutor do Chrome reescreve o texto da página
+#   e quebra a interface (o Streamlit marca a página como lang="en");
+# - libera os ícones só depois que a fonte de ícones carregar, para o nome do ícone nunca aparecer como texto.
+AJUSTES_PAGINA = """<script>
+(function () {
+  var docs = [];
+  try { docs.push(window.parent.document); } catch (e) {}
+  try { if (window.top !== window.parent) docs.push(window.top.document); } catch (e) {}
+  docs.forEach(function (d) {
+    d.documentElement.lang = "pt-BR";
+    d.documentElement.setAttribute("translate", "no");
+    d.documentElement.classList.add("notranslate");
+    if (!d.querySelector('meta[name="google"][content="notranslate"]')) {
+      var m = d.createElement("meta"); m.name = "google"; m.content = "notranslate"; d.head.appendChild(m);
+    }
+  });
+  var d = docs[0];
+  if (!d || !d.fonts) return;
+  var fonte = '24px "Material Symbols Rounded"', tentativas = 0;
+  (function esperar() {
+    d.fonts.load(fonte, "home").then(function (ok) {
+      if (ok.length && d.fonts.check(fonte, "home")) d.documentElement.classList.add("fl-icones");
+      else if (++tentativas < 15) setTimeout(esperar, 2000);
+    }, function () { if (++tentativas < 15) setTimeout(esperar, 2000); });
+  })();
+})();
+</script>"""
+
+
 def esc(x) -> str:
     return html.escape(str(x))
 

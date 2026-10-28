@@ -30,6 +30,7 @@ st.set_page_config(page_title="Foco Leve", page_icon="💪", layout="centered")
 PASTA_FOTOS = A.CAMINHO_PADRAO.parent / "fotos"
 
 st.markdown(ui.tema_css(), unsafe_allow_html=True)
+components.html(ui.AJUSTES_PAGINA, height=0)
 
 
 # ------------------------------------------------------------------ conta e estado
