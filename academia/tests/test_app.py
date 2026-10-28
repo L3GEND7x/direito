@@ -123,6 +123,13 @@ def test_isolamento_entre_contas():
     con = sqlite3.connect(os.environ["FOCO_LEVE_DB"])
     donos = [r[0] for r in con.execute("SELECT usuario FROM estado")]
     assert "padrao" not in donos and len(set(donos)) == len(donos)  # nenhum identificador fixo compartilhado
+    # cada conta tem a própria rotação de exercícios, estável entre acessos
+    sa, sb = a2.session_state["S"]["semente"], b2.session_state["S"]["semente"]
+    assert sa and sb and sa != sb and entrar(abrir(), "carla@exemplo.com").session_state["S"]["semente"] == sa
+    a2.radio(key="aba").set_value("Treinos").run()
+    assert not a2.exception and any("montado para você" in e.label for e in a2.expander)
+    a2.radio(key="aba").set_value("Perfil").run()
+    assert any("Peso atual: 101,1 kg" in c.value for c in a2.caption)
 
 
 def textos(no) -> str:

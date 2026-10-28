@@ -5,6 +5,7 @@ No celular: streamlit run app.py --server.address 0.0.0.0  e abra http://IP-DO-C
 """
 from __future__ import annotations
 
+import hashlib
 import html
 import importlib
 import json
@@ -278,6 +279,9 @@ def estado() -> dict:
         v = LOJA.versao(u)
         if "S" not in st.session_state or (st.session_state.get("versao") != v and not st.session_state.get("pendente")):
             st.session_state.S, st.session_state.versao = LOJA.carregar_com_versao(u)
+            if not st.session_state.S.get("semente"):
+                # rotação própria da conta na escolha dos exercícios (estável: vem do identificador da conta)
+                st.session_state.S["semente"] = int(hashlib.sha256(str(u["id"]).encode()).hexdigest()[:8], 16) % 9973
     except A.ErroAutenticacao as e:
         sair()
         st.session_state.aviso_login = str(e)
@@ -710,7 +714,7 @@ def form_dados_iniciais() -> None:
             S["schedule"] = P.agenda_para(int(dias))
             if not any(w["date"] == t for w in S["weights"]):
                 S["weights"].append({"id": R.novo_id(), "date": t, "peso": novos["pesoInicial"], "cintura": None,
-                                     "cond": "Informado no primeiro acesso", "obs": ""})
+                                     "cond": P.PESAGEM_INICIAL, "obs": ""})
             salvar()
             st.rerun()
 
@@ -909,6 +913,10 @@ def tela_treinos() -> None:
         st.caption(":material/info: " + x)
     if pl["bloqueados"]:
         st.warning("**Fora do plano por segurança:**  \n" + "  \n".join(f"{R.nome_ex(x)}: {m}" for x, m in pl["bloqueados"]))
+    with st.expander(":material/tune: Como este treino foi montado para você"):
+        st.markdown("\n".join(f"- {x}" for x in P.resumo_personalizacao(S, pw)))
+        st.caption("A escolha dos exercícios também segue uma ordem própria da sua conta, que muda a cada semana. "
+                   "Mudou peso, nível, dias, tempo ou limitações? Atualize no Perfil ou em “Editar meus dados” no Início.")
     with st.container():
         if d == t:
             if st.session_state.get("pre_inicio"):
@@ -1661,6 +1669,11 @@ def tela_perfil() -> None:
                 salvar()
                 st.session_state.aviso = ("ok", "Perfil salvo", "O plano foi recalculado com os dados novos. O histórico foi mantido.")
                 st.rerun()
+    if S["weights"]:
+        ult = R.pesos_ordenados(S)[-1]
+        st.caption(f"Peso atual: {br(ult['peso'])} kg (última pesagem, em {fmt_dy(ult['date'])}). "
+                   "Para registrar um peso novo, use Evolução ou “Editar meus dados” no Início; "
+                   "mudar o peso inicial aqui corrige também a pesagem do primeiro acesso.")
     i0, i1 = R.imc(S, p["pesoInicial"]), R.imc(S, R.peso_atual(S))
     st.caption(f"IMC inicial: {br(i0)} kg/m² · IMC atual: {br(i1)} kg/m² ({R.imc_categoria(i1)}). Indicador de triagem, não é diagnóstico.")
 

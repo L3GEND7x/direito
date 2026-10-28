@@ -13,6 +13,7 @@ import re
 from . import dados as D
 from . import regras as R
 
+PESAGEM_INICIAL = "Informado no primeiro acesso"
 AQUECIMENTO_MIN = 10
 VOLTA_CALMA_MIN = 5
 CARDIO_MINIMO = 30
@@ -28,6 +29,35 @@ def nivel(S: dict) -> str:
     if n.startswith("inter"):
         return "intermediario"
     return "iniciante"
+
+
+def semente(S: dict) -> int:
+    """Deslocamento próprio de cada conta na rotação dos exercícios (0 em estados antigos ou de teste)."""
+    try:
+        return max(0, int(S.get("semente") or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def resumo_personalizacao(S: dict, semana: int) -> list[str]:
+    """Em linguagem simples, o que do perfil desta pessoa está moldando o plano."""
+    p = S["profile"]
+    n = {"iniciante": "Iniciante: 2 séries nas 2 primeiras semanas e exercícios complementares só a partir da fase 2",
+         "intermediario": "Intermediário: exercícios complementares desde a 1ª semana",
+         "avancado": "Avançado: exercícios complementares desde a 1ª semana e 4 séries nos compostos a partir da fase 2"}[nivel(S)]
+    out = [n, f"{int(p.get('dias') or 0)} dia(s) de treino por semana, até {int(p.get('tempoMax') or 90)} min por sessão"]
+    i = imc_atual(S)
+    if R.ok(i):
+        out.append(f"IMC {R.br(i)}: " + ("cardio e exercícios de baixo impacto nesta fase" if baixo_impacto(S, semana)
+                                          else "sem restrição de impacto por IMC nesta fase"))
+    falta = R.peso_atual(S) - float(p["pesoMeta"])
+    out.append(f"Faltam {R.br(max(0.0, falta))} kg para a meta: alvo de {cardio_semanal_alvo(S)} min de cardio na semana")
+    lim = regioes_limitadas(S)
+    if lim:
+        out.append("Limitações consideradas: " + ", ".join(sorted(set(lim.values()))) + " (exercícios dessas regiões ficam fora)")
+    if str(S["assess"].get("proibidos") or "").strip():
+        out.append("Exercícios proibidos na avaliação ficam fora do plano")
+    return out
 
 
 def fase_da_semana(semana: int) -> tuple[int, dict]:
@@ -187,6 +217,8 @@ def prescricao(S: dict, ex_id: str, semana: int) -> dict:
     if b["tipo"] == "carga":
         if nivel(S) == "iniciante" and semana <= 2:
             p["series"] = 2
+        elif nivel(S) == "avancado" and fase_da_semana(semana)[0] >= 1 and ex_id not in D.ISOLADOS:
+            p["series"] = 4  # compostos com uma série a mais depois da adaptação
         if p["descanso"] >= 60:
             p["descanso"] = fase["descanso"]
     else:
@@ -246,12 +278,13 @@ def plano_do_dia(S: dict, data: str, semana: int | None = None, wk: str | None =
         # o cardio é o dígito que muda toda semana; depois as vagas fixas e, por último, as da fase 2.
         # Mesmo com exercícios bloqueados, duas semanas seguidas nunca ficam iguais.
         ordem = [i for i, v in enumerate(vagas) if not v[2]] + [i for i, v in enumerate(vagas) if v[2]]
-        dig = digitos_da_semana(semana, [len(lista_cardio(S, semana))] + [len(vagas[i][1]) for i in ordem])
+        # a semente da conta desloca a rotação: duas pessoas com o mesmo perfil não recebem o mesmo treino
+        dig = digitos_da_semana(semana + semente(S), [len(lista_cardio(S, semana))] + [len(vagas[i][1]) for i in ordem])
         cardio_inicio = dig[0]
         inicio_vaga = {i: dig[k + 1] for k, i in enumerate(ordem)}
         for vaga, (_, opcoes, so_fase2) in enumerate(vagas):
-            if so_fase2 and fase_idx == 0:
-                continue
+            if so_fase2 and fase_idx == 0 and nivel(S) == "iniciante":
+                continue  # quem já treina recebe os exercícios complementares desde a primeira semana
             ex_id = escolher_na_vaga(S, opcoes, semana, inicio_vaga[vaga], set(forca))
             if ex_id:
                 forca.append(ex_id)
@@ -394,6 +427,12 @@ def atualizar_perfil(S: dict, novos: dict) -> list[str]:
     mudou = [k for k, v in novos.items() if p.get(k) != v]
     dias_antes = p.get("dias")
     p.update(novos)
+    if "pesoInicial" in mudou:
+        # a pesagem criada no primeiro acesso é o próprio peso inicial: corrigir um corrige o outro
+        # (as pesagens registradas depois, na Evolução, não mudam)
+        for w in S["weights"]:
+            if w.get("cond") == PESAGEM_INICIAL:
+                w["peso"] = novos["pesoInicial"]
     if "dias" in novos and int(novos["dias"]) != int(dias_antes or 0):
         S["schedule"] = agenda_para(novos["dias"])
     return mudou
