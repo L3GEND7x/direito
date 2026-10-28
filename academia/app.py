@@ -32,16 +32,28 @@ st.markdown(ui.tema_css(), unsafe_allow_html=True)
 
 # ------------------------------------------------------------------ estado
 def estado() -> dict:
-    if "S" not in st.session_state:
-        st.session_state.S = A.carregar()
+    """Estado da sessão. Se outra aba ou aparelho salvou depois, recarrega do banco antes de desenhar a tela:
+    como cada ação salva na hora, esta sessão não tem nada pendente nesse momento."""
+    v = A.versao()
+    if "S" not in st.session_state or st.session_state.get("versao") != v:
+        st.session_state.S, st.session_state.versao = A.carregar_com_versao()
     return st.session_state.S
 
 
 def salvar() -> None:
-    A.salvar(st.session_state.S)
+    """Grava só se ninguém salvou no meio; senão descarta esta ação e recarrega (nunca apaga o que a outra aba gravou)."""
+    try:
+        st.session_state.versao = A.salvar(st.session_state.S, versao_esperada=st.session_state.get("versao"))
+    except A.Conflito:
+        st.session_state.S, st.session_state.versao = A.carregar_com_versao()
+        st.session_state.aviso = ("alerta", "Dados atualizados em outra aba",
+                                  "O app foi aberto em outra aba ou aparelho e salvou antes. Os dados foram recarregados: "
+                                  "repita a última ação, se ela não aparecer.")
+        st.rerun()
 
 
 S = estado()
+R.definir_fuso(S["profile"].get("fuso"))
 t = R.hoje()
 
 
@@ -65,12 +77,20 @@ def foto(ex_id: str, i: int) -> str:
 
 
 def mostrar_fotos(ex_id: str) -> None:
-    if not D.FOTOS.get(ex_id):
+    """Início e fim do movimento lado a lado (também no celular, onde colunas do Streamlit empilhariam)."""
+    pasta = D.FOTOS.get(ex_id)
+    if not pasta:
         st.caption("Sem foto para este exercício.")
         return
-    c1, c2 = st.columns(2)
-    c1.image(foto(ex_id, 0), caption="Início", use_container_width=True)
-    c2.image(foto(ex_id, 1), caption="Fim", use_container_width=True)
+    if (PASTA_FOTOS / f"{pasta}_0.jpg").exists():  # fotos baixadas para uso sem internet
+        c1, c2 = st.columns(2)
+        c1.image(foto(ex_id, 0), caption="Início", use_container_width=True)
+        c2.image(foto(ex_id, 1), caption="Fim", use_container_width=True)
+        return
+    nome = html.escape(R.nome_ex(ex_id))
+    html_md("<div class='fl-fotos'>" + "".join(
+        f"<figure><img src='{D.FOTO_URL_BASE}{pasta}/{i}.jpg' alt='{nome}: {r.lower()} do movimento' loading='lazy'>"
+        f"<figcaption>{r}</figcaption></figure>" for i, r in ((0, "Início"), (1, "Fim"))) + "</div>")
 
 
 def capa(ex_ids, chip: str, titulo: str, texto: str = "", ficha=()) -> None:
@@ -161,11 +181,11 @@ el.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');setTimeout(f,25
 </script>""", height=104)
 
 
-def cronometro_sessao(inicio_ms: int, plano_min: int) -> None:
+def cronometro_sessao(inicio_ms: int, plano_min: int | None) -> None:
     """Relógio da sessão que anda sozinho no navegador, sem recarregar o app."""
     components.html(f"""
 <div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif;display:flex;justify-content:space-between;align-items:center;color:#f5f5f7;padding:2px 2px">
-<span style="font-size:13px;color:#a1a1a6">Tempo de treino · plano ≈ {plano_min} min</span>
+<span style="font-size:13px;color:#a1a1a6">Tempo de treino{f" · plano ≈ {plano_min} min" if plano_min else ""}</span>
 <b id="t" style="font-size:28px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">0:00</b></div>
 <script>
 const ini={inicio_ms};
@@ -236,7 +256,7 @@ def editar_dados() -> None:
                 if erros:
                     st.error(" ".join(erros))
                     return
-                novos.update({"dias": int(dias), "tempoMax": int(tempo), "nivel": nivel, "limitacao": lim.strip()})
+                novos.update({"dias": int(dias), "tempoMax": int(tempo), "nivel": nivel, "limitacao": lim.strip(), "confirmado": True})
                 agenda_antes = dict(S["schedule"])
                 P.atualizar_perfil(S, novos)
                 if peso_hoje.strip():
@@ -368,21 +388,62 @@ def checkin() -> None:
 
 
 # ------------------------------------------------------------------ INÍCIO
+def form_dados_iniciais() -> None:
+    """Passo 1 do primeiro acesso: os valores aparecem como exemplo até a pessoa confirmar os dela."""
+    p = S["profile"]
+    with st.form("dados_iniciais"):
+        st.markdown("#### Passo 1 de 2 · Seus dados")
+        st.caption("Os campos vêm com valores de exemplo. Troque pelos seus: o plano de 20 semanas é calculado a partir deles.")
+        nome = st.text_input("Nome (opcional)", p.get("nome", ""))
+        c1, c2 = st.columns(2)
+        peso = c1.text_input("Peso atual (kg)", placeholder=f"exemplo: {brx(p['pesoInicial'])}")
+        meta = c2.text_input("Peso desejado (kg)", placeholder=f"exemplo: {brx(p['pesoMeta'])}")
+        c1, c2 = st.columns(2)
+        alt = c1.text_input("Altura (cm)", placeholder=f"exemplo: {brx(p['altura'])}")
+        idade = c2.text_input("Idade (anos)", placeholder=f"exemplo: {brx(p['idade'])}")
+        c1, c2 = st.columns(2)
+        dias = c1.selectbox("Dias de treino por semana", list(range(1, 8)), index=4)
+        tempo = c2.selectbox("Tempo máximo por treino (min)", TEMPOS, index=TEMPOS.index(90))
+        c1, c2 = st.columns(2)
+        nivel = c1.selectbox("Nível de experiência", NIVEIS)
+        fuso = c2.selectbox("Fuso horário", list(R.FUSOS), index=list(R.FUSOS).index(p.get("fuso") or R.FUSO_PADRAO),
+                            format_func=lambda k: R.FUSOS[k][0])
+        lim = st.text_area("Limitações, dores e restrições (se houver)", p.get("limitacao", ""),
+                           placeholder="Ex.: dor no joelho direito ao agachar")
+        if st.form_submit_button("Continuar", type="primary", use_container_width=True):
+            novos, erros = validar_perfil({"pesoInicial": peso, "pesoMeta": meta, "altura": alt, "idade": idade})
+            if erros:
+                st.error("Preencha seus dados: " + " ".join(erros))
+                return
+            novos.update({"nome": nome.strip(), "dias": int(dias), "tempoMax": int(tempo), "nivel": nivel, "fuso": fuso,
+                          "limitacao": lim.strip(), "confirmado": True})
+            P.atualizar_perfil(S, novos)
+            S["schedule"] = P.agenda_para(int(dias))
+            if not any(w["date"] == t for w in S["weights"]):
+                S["weights"].append({"id": R.novo_id(), "date": t, "peso": novos["pesoInicial"], "cintura": None,
+                                     "cond": "Informado no primeiro acesso", "obs": ""})
+            salvar()
+            st.rerun()
+
+
 def tela_primeiro_acesso() -> None:
     p = S["profile"]
-    capa(["agachamento_goblet"], "PRIMEIRO PASSO", "Olá, vamos definir a meta",
-         "Antes do primeiro treino, responda a algumas perguntas rápidas de segurança. "
+    capa(["agachamento_goblet"], "PRIMEIRO PASSO", "Olá, vamos montar o seu plano",
+         "Dois passos rápidos: seus dados e algumas perguntas de segurança. "
          "Elas não substituem avaliação médica nem a orientação do profissional de educação física.")
+    if not p.get("confirmado"):
+        form_dados_iniciais()
+        return
     cartoes([("Peso inicial", f"{br(p['pesoInicial'])} kg", None, True), ("Meta", f"{br(p['pesoMeta'])} kg", "sem prazo", True),
              ("Idade", f"{p['idade']} anos", None, False), ("Altura", f"{br(p['altura'], 0)} cm", None, False)])
-    st.subheader("Avaliação de segurança")
+    st.subheader("Passo 2 de 2 · Avaliação de segurança")
     st.caption(f"IMC inicial estimado: {br(R.imc(S, p['pesoInicial']))} kg/m² (triagem, não é diagnóstico). "
                f"Diferença até a meta: {br(p['pesoInicial'] - p['pesoMeta'])} kg, sem data obrigatória.")
     form_avaliacao()
 
 
 def saudacao() -> str:
-    h = datetime.now().hour
+    h = R.agora().hour
     return "Bom dia" if 5 <= h < 12 else ("Boa tarde" if 12 <= h < 18 else "Boa noite")
 
 
@@ -411,7 +472,7 @@ def tela_inicio() -> None:
     cabecalho(f"{saudacao()}{', ' + nome[0] if nome else ''}", data_extensa(t))
     if R.seguranca(S) == "urgent":
         aviso_urgente()
-    lem = R.lembretes(S, datetime.now().strftime("%H:%M"))
+    lem = R.lembretes(S, R.agora().strftime("%H:%M"))
     if lem:
         st.info("  \n".join(lem))
 
@@ -695,6 +756,8 @@ def cardio_feito(a: dict) -> float:
 
 def tela_sessao() -> None:
     a = S["active"]
+    if R.garantir_uids(a):  # sessões começadas antes desta versão
+        salvar()
     W = D.TREINOS[a["workout"]]
     n = len(a["ex"])
     feitos = sum(1 for e in a["ex"] if e.get("done"))
@@ -703,7 +766,7 @@ def tela_sessao() -> None:
     fi, fase = P.fase_da_semana(semana)
     cabecalho(W["nome"].split(" — ")[0], f"Em andamento · semana {semana} de {D.SEMANAS_PLANO} · fase {fi + 1}")
     with st.container(border=True):
-        cronometro_sessao(a["startedAt"], int(a.get("planoMin") or 0))
+        cronometro_sessao(a["startedAt"], int(a.get("planoMin") or 0) or None)
         st.progress(feitos / n if n else 0.0, text=f"{feitos} de {n} exercícios")
         plano_cardio = (a.get("etapas") or {}).get("Cardio")
         html_md(ui.grade([("Volume", f"{br(R.volume(a), 0)} kg", "carga × repetições", False),
@@ -841,7 +904,7 @@ def concluir_serie(i: int, j: int, k: str, e: dict, se: dict) -> None:
 
 def exercicio_sessao(i: int, se: dict, aberto: bool) -> None:
     e = R.ex_sessao(S, se)
-    sid = S["active"]["id"]
+    sid = se["uid"]
     feitas = sum(1 for x in se["sets"] if x["done"])
     resumo = f"{e['duracao']} min" if e["tipo"] == "tempo" else f"{feitas}/{len(se['sets'])} séries"
     if se.get("done"):
@@ -851,6 +914,8 @@ def exercicio_sessao(i: int, se: dict, aberto: bool) -> None:
     else:
         rotulo = f"{e['nome']} · {resumo}"
     with st.expander(rotulo, expanded=aberto):
+        if not se.get("done"):
+            mostrar_fotos(se["id"])  # demonstração do movimento logo no topo
         html_md(prescricao_html(e))
         if not se.get("done"):
             html_md(f"<div class='fl-rec'>{html.escape(R.recomendacao(S, se['id']))}</div>")
@@ -865,7 +930,7 @@ def bloco_series(i: int, se: dict, e: dict, sid: str) -> None:
     proxima = next((j for j, x in enumerate(se["sets"]) if not x["done"]), None)
     ult = R.ultima_carga(S, se["id"])
     for j, sset in enumerate(se["sets"]):
-        k = f"{sid}_{i}_{j}"
+        k = f"{sid}_{j}"
         if sset["done"]:
             carga = f"{sset.get('load')} kg × " if sset.get("load") and not e.get("semCarga") else ""
             html_md(f"<div class='fl-serie-ok'><i>✓</i>Série {j + 1}<span>{html.escape(carga + str(sset.get('reps') or ''))}"
@@ -895,7 +960,7 @@ def bloco_series(i: int, se: dict, e: dict, sid: str) -> None:
         else:
             st.caption(f"Série {j + 1} · {e['reps']} repetições")
     if feitas := [j for j, x in enumerate(se["sets"]) if x["done"]]:
-        if st.button("Desfazer última série", key=f"desfazer_{sid}_{i}", icon=":material/undo:"):
+        if st.button("Desfazer última série", key=f"desfazer_{sid}", icon=":material/undo:"):
             R.marcar_serie(S, i, feitas[-1], False)
             st.session_state.descanso_ate = 0
             salvar()
@@ -904,10 +969,10 @@ def bloco_series(i: int, se: dict, e: dict, sid: str) -> None:
 
 def bloco_cardio(i: int, se: dict, e: dict, sid: str) -> None:
     sset = se["sets"][0]
-    k = f"{sid}_{i}_0"
+    k = f"{sid}_0"
     if sset["done"]:
         html_md(f"<div class='fl-serie-ok'><i>✓</i>{html.escape(e['nome'])}<span>{html.escape(str(sset.get('min') or e['duracao']))} min</span></div>")
-        if st.button("Desfazer", key=f"desfazer_{sid}_{i}", icon=":material/undo:"):
+        if st.button("Desfazer", key=f"desfazer_{sid}", icon=":material/undo:"):
             R.marcar_serie(S, i, 0, False)
             salvar()
             st.rerun()
@@ -916,18 +981,18 @@ def bloco_cardio(i: int, se: dict, e: dict, sid: str) -> None:
         semana = S["active"].get("semana") or 1
         mods = [c for c in D.CARDIO_TODOS if c == se["id"] or not P.motivo_bloqueio(S, c, semana)]
         if se["id"] in mods and len(mods) > 1:
-            nova = st.selectbox("Modalidade de cardio", mods, index=mods.index(se["id"]), format_func=R.nome_ex, key=f"mod{sid}_{i}")
+            nova = st.selectbox("Modalidade de cardio", mods, index=mods.index(se["id"]), format_func=R.nome_ex, key=f"mod{sid}")
             if nova != se["id"]:
                 entrada = R.nova_entrada(S, nova, se.get("presc"))
                 entrada["sets"][0]["min"] = sset.get("min", "")
                 S["active"]["ex"][i] = entrada
-                st.session_state.pop(f"mod{sid}_{i}", None)
+                st.session_state.pop(f"mod{sid}", None)
                 salvar()
                 st.rerun()
         ops = D.INTENSIDADES[e["cardio"]]
         vals = [o[0] for o in ops]
         esc = st.selectbox("Intensidade (usada na estimativa de calorias)", vals,
-                           index=vals.index(se.get("met")) if se.get("met") in vals else 0, format_func=dict(ops).get, key=f"met{sid}_{i}")
+                           index=vals.index(se.get("met")) if se.get("met") in vals else 0, format_func=dict(ops).get, key=f"met{sid}")
         if esc != se.get("met"):
             se["met"] = esc
             salvar()
@@ -946,19 +1011,19 @@ def detalhes_exercicio(i: int, se: dict, e: dict, sid: str) -> None:
     alts = [x for x in D.ALTERNATIVAS.get(se["id"], []) if x in D.EXERCICIOS and R.status_ex(S, x)[0]]
     if alts and not any(x["done"] for x in se["sets"]) and not e.get("cardio"):
         tr = st.selectbox("Aparelho ocupado? Trocar por", [""] + alts,
-                          format_func=lambda x: "Manter este exercício" if not x else R.nome_ex(x), key=f"sw{sid}_{i}")
+                          format_func=lambda x: "Manter este exercício" if not x else R.nome_ex(x), key=f"sw{sid}")
         if tr:
             S["active"]["ex"][i] = R.nova_entrada(S, tr, se.get("presc"))
-            st.session_state.pop(f"sw{sid}_{i}", None)
+            st.session_state.pop(f"sw{sid}", None)
             salvar()
             st.rerun()
     c1, c2 = st.columns(2)
     rpe_ops = [""] + [str(n) for n in range(1, 11)]
-    rpe = c1.selectbox("Esforço percebido (1–10)", rpe_ops, index=rpe_ops.index(str(se.get("rpe") or "")), key=f"rpe{sid}_{i}",
+    rpe = c1.selectbox("Esforço percebido (1–10)", rpe_ops, index=rpe_ops.index(str(se.get("rpe") or "")), key=f"rpe{sid}",
                        format_func=lambda x: x or "—")
     dor_ops = ["nenhum", "leve", "moderado", "forte"]
     dor = c2.selectbox("Dor ou desconforto", dor_ops, index=dor_ops.index(se.get("painLevel") or "nenhum"),
-                       format_func=str.capitalize, key=f"pl{sid}_{i}")
+                       format_func=str.capitalize, key=f"pl{sid}")
     if rpe != (se.get("rpe") or "") or dor != se.get("painLevel"):
         se["rpe"], se["painLevel"] = rpe, dor
         salvar()
@@ -966,22 +1031,49 @@ def detalhes_exercicio(i: int, se: dict, e: dict, sid: str) -> None:
         st.error("**Pare este exercício.** Com dor moderada ou forte, interrompa. Se a dor for em uma articulação, no peito "
                  "ou vier com inchaço, use “Senti um sintoma”.")
     if dor != "nenhum" or se.get("pain"):
-        txt = st.text_input("Onde e como foi o desconforto (opcional)", se.get("pain", ""), key=f"pt{sid}_{i}")
+        txt = st.text_input("Onde e como foi o desconforto (opcional)", se.get("pain", ""), key=f"pt{sid}")
         if txt != se.get("pain", ""):
             se["pain"] = txt
             salvar()
     c1, c2 = st.columns(2)
     with c1.popover("Como executar", icon=":material/info:", use_container_width=True):
-        mostrar_fotos(se["id"])
+        if se.get("done"):
+            mostrar_fotos(se["id"])
+        st.caption("Músculos: " + e["musculos"])
         for n_, passo in enumerate(e["instrucoes"], 1):
             st.markdown(f"{n_}. {passo}")
         for al in e["alertas"]:
             st.caption(":material/warning: " + al)
-    if not se.get("done") and c2.button("Marcar como concluído", key=f"exd{sid}_{i}", use_container_width=True,
+    if not se.get("done") and c2.button("Marcar como concluído", key=f"exd{sid}", use_container_width=True,
                                         help="Para quando você fez o exercício sem registrar todas as séries"):
         se["done"] = True
         salvar()
         st.toast(f"{e['nome']} concluído", icon=":material/check_circle:")
+        st.rerun()
+    remover_exercicio(i, se, e, sid)
+
+
+def remover_exercicio(i: int, se: dict, e: dict, sid: str) -> None:
+    """Tira o exercício só desta sessão, com confirmação; o plano e o histórico não mudam."""
+    chave = f"rm{sid}"
+    if not st.session_state.get(chave):
+        if st.button("Remover deste treino", key=f"rmb{sid}", icon=":material/delete:", use_container_width=True):
+            st.session_state[chave] = True
+            st.rerun()
+        return
+    feitas = sum(1 for x in se["sets"] if x["done"])
+    st.warning(f"Remover **{e['nome']}** desta sessão?" + (f" As {feitas} série(s) já registradas dele serão descartadas." if feitas else "")
+               + " O plano e os outros treinos não mudam.")
+    c1, c2 = st.columns(2)
+    if c1.button("Remover", key=f"rmok{sid}", type="primary", use_container_width=True):
+        R.remover_exercicio_sessao(S, i)
+        st.session_state.pop(chave, None)
+        st.session_state.descanso_ate = 0
+        salvar()
+        st.toast(f"{e['nome']} removido do treino", icon=":material/delete:")
+        st.rerun()
+    if c2.button("Cancelar", key=f"rmno{sid}", use_container_width=True):
+        st.session_state.pop(chave, None)
         st.rerun()
 
 
@@ -1200,7 +1292,7 @@ def evolucao_relatorio() -> None:
 def tela_habitos() -> None:
     cabecalho("Hábitos", "Opcional · salva automaticamente")
     dsel = st.date_input("Dia", value=R.pd(t), max_value=R.pd(t), format="DD/MM/YYYY").isoformat()
-    x = S["habits"].setdefault(dsel, {})
+    x = S["habits"].get(dsel, {})  # o dia só é gravado quando algo for preenchido
     c1, c2 = st.columns(2)
     agua = c1.number_input("Água (copos de 250 ml)", 0, 30, int(x.get("agua") or 0), key="h_agua_" + dsel)
     sono_txt = c2.text_input("Horas de sono", brx(x["sono"]) if ok(x.get("sono")) else "", key="h_sono_" + dsel, placeholder="Ex.: 7")
@@ -1214,8 +1306,13 @@ def tela_habitos() -> None:
         st.error("Horas de sono devem ficar entre 0 e 24.")
     novo = {"agua": agua, "sono": sono if sono_txt.strip() and ok(sono) and 0 <= sono <= 24 else (x.get("sono") if sono_txt.strip() else None),
             "refeicoes": ref, "obs": obs, **{k: (v or None) for k, v in esc.items()}}
-    if novo != {k: x.get(k) for k in novo}:
-        x.update(novo)
+    vazio = {"agua": 0, "sono": None, "refeicoes": "", "obs": "", "fome": None, "saciedade": None, "energia": None}
+    antes = {k: x.get(k, vazio[k]) for k in novo}
+    if novo != antes:
+        if novo == vazio:
+            S["habits"].pop(dsel, None)
+        else:
+            S["habits"][dsel] = {**x, **novo}
         salvar()
     st.caption(f"{br(agua * 250, 0)} ml de água registrados.")
     linhas = []
@@ -1249,13 +1346,16 @@ def tela_perfil() -> None:
         nivel_atual = next((n for n in NIVEIS if n.lower()[:5] == str(p.get("nivel") or "").lower()[:5]), "Iniciante")
         nivel = c2.selectbox("Nível de experiência", NIVEIS, index=NIVEIS.index(nivel_atual))
         obj = st.text_input("Objetivo", p.get("objetivo", ""))
+        fuso = st.selectbox("Fuso horário (define o que é “hoje” no app)", list(R.FUSOS),
+                            index=list(R.FUSOS).index(p.get("fuso") or R.FUSO_PADRAO), format_func=lambda k: R.FUSOS[k][0])
         lim = st.text_area("Limitações e contraindicações", p.get("limitacao", ""))
         if st.form_submit_button("Salvar perfil", type="primary"):
             novos, erros = validar_perfil(vals)
             if erros:
                 st.error(" ".join(erros))
             else:
-                novos.update({"nome": nome.strip(), "local": local.strip(), "nivel": nivel, "objetivo": obj.strip(),
+                novos.update({"nome": nome.strip(), "local": local.strip(), "nivel": nivel, "objetivo": obj.strip(), "fuso": fuso,
+                              "confirmado": True,
                               "limitacao": lim.strip()})
                 P.atualizar_perfil(S, novos)
                 salvar()
@@ -1370,25 +1470,37 @@ def tela_perfil() -> None:
                 destino = PASTA_FOTOS / f"{pasta}_{i}.jpg"
                 if destino.exists():
                     continue
+                parcial = destino.with_suffix(".parcial")
                 try:
-                    urllib.request.urlretrieve(f"{D.FOTO_URL_BASE}{pasta}/{i}.jpg", destino)
+                    # baixa para um arquivo temporário: uma queda no meio não deixa foto quebrada para sempre
+                    urllib.request.urlretrieve(f"{D.FOTO_URL_BASE}{pasta}/{i}.jpg", parcial)
+                    parcial.replace(destino)
                 except OSError:
+                    parcial.unlink(missing_ok=True)
                     falhas += 1
             barra.progress((n + 1) / len(pastas))
         st.success("Fotos baixadas." if not falhas else f"Concluído com {falhas} falha(s). Verifique a internet e tente de novo.")
 
     html_md("<div class='fl-secao'>Cópia de segurança</div>")
-    dados_json = json.dumps(S, ensure_ascii=False, indent=1)
+    dados_json = json.dumps({k: v for k, v in S.items() if not k.startswith("_")}, ensure_ascii=False, indent=1)
     st.download_button("Baixar cópia (.json)", dados_json.encode("utf-8"), file_name=f"foco-leve-{t}.json", mime="application/json")
     up = st.file_uploader("Restaurar a partir de uma cópia (.json do app Python ou da versão web)", type=["json", "txt"])
-    if up is not None and st.button("Restaurar dados"):
-        try:
-            st.session_state.S = A.importar_json(up.getvalue().decode("utf-8"))
-            salvar()
-            st.success("Dados restaurados.")
-            st.rerun()
-        except ValueError as e:
-            st.error(str(e))
+    if up is not None:
+        st.warning("Restaurar **substitui todos os registros atuais** pelos da cópia. Baixe a cópia atual acima antes, se quiser guardá-la.")
+        ciente = st.checkbox("Entendi que os registros atuais serão substituídos", key="ciente_restaurar")
+        if st.button("Restaurar dados", disabled=not ciente):
+            try:
+                novo = A.importar_json(up.getvalue().decode("utf-8", errors="replace"))
+            except ValueError as e:
+                st.error(f"Não foi possível restaurar: {e}")
+            else:
+                descartados = novo.pop("_descartados", 0)
+                st.session_state.S = novo
+                salvar()
+                st.session_state.aviso = ("ok", "Dados restaurados",
+                                          f"{len(novo['sessions'])} treinos e {len(novo['weights'])} pesagens recuperados."
+                                          + (f" {descartados} registro(s) malformado(s) foram ignorados." if descartados else ""))
+                st.rerun()
     if st.session_state.get("conf_reset"):
         st.warning("Isso apaga todos os registros deste computador.")
         c1, c2 = st.columns(2)

@@ -9,7 +9,7 @@ import math
 import re
 import time
 import uuid
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 from . import dados as D
 
@@ -17,8 +17,25 @@ VERSAO = 3
 
 
 # ---------------------------------------------------------------- utilidades
+# O servidor (Streamlit Cloud) roda em UTC: "hoje" e a hora vêm do fuso escolhido no Perfil.
+# O Brasil não tem horário de verão desde 2019, então deslocamentos fixos bastam e não exigem tzdata.
+FUSOS = {"America/Noronha": ("Fernando de Noronha (UTC−2)", -2), "America/Sao_Paulo": ("Brasília (UTC−3)", -3),
+         "America/Manaus": ("Amazonas e Mato Grosso (UTC−4)", -4), "America/Rio_Branco": ("Acre (UTC−5)", -5)}
+FUSO_PADRAO = "America/Sao_Paulo"
+_fuso = FUSO_PADRAO
+
+
+def definir_fuso(nome: str | None) -> None:
+    global _fuso
+    _fuso = nome if nome in FUSOS else FUSO_PADRAO
+
+
+def agora() -> datetime:
+    return datetime.now(timezone(timedelta(hours=FUSOS[_fuso][1])))
+
+
 def hoje() -> str:
-    return date.today().isoformat()
+    return agora().date().isoformat()
 
 
 def pd(s: str) -> date:
@@ -100,7 +117,9 @@ def novo_id() -> str:
 def padrao() -> dict:
     return {
         "v": VERSAO,
-        "profile": {"nome": "", "idade": 23, "pesoInicial": 115, "altura": 175, "pesoMeta": 89,
+        # valores de exemplo até a pessoa confirmar os próprios dados ("confirmado")
+        "profile": {"nome": "", "idade": 23, "pesoInicial": 115, "altura": 175, "pesoMeta": 89, "confirmado": False,
+                    "fuso": FUSO_PADRAO,
                     "objetivo": "Emagrecimento e redução de gordura corporal", "local": "Academia",
                     "nivel": "Iniciante", "dias": 5, "tempoMax": 90, "limitacao": ""},
         "assess": {"done": False, "date": "", "joelho": "", "dor": "", "inchaco": "", "caminhar": "",
@@ -132,6 +151,18 @@ def mesclar(o: dict | None) -> dict:
     for k in ["plan", "ajustes", "dayOverride", "checkins", "habits"]:
         if not isinstance(out.get(k), dict):
             out[k] = {}
+    # registros malformados (cópia editada à mão, versão antiga) são descartados em vez de derrubar a tela
+    out["weights"] = [w for w in out["weights"] if _pesagem_valida(w)]
+    for w in out["weights"]:
+        w.setdefault("id", novo_id())
+    out["sessions"] = [x for x in out["sessions"] if _sessao_valida(x)]
+    out["checkins"] = {k: v for k, v in out["checkins"].items() if _data_valida(k) and isinstance(v, dict)}
+    out["habits"] = {k: v for k, v in out["habits"].items() if _data_valida(k) and isinstance(v, dict)}
+    if out.get("active") is not None and not _sessao_valida(out["active"], em_andamento=True):
+        out["active"] = None
+    if "confirmado" not in (o.get("profile") or {}):
+        # quem já usava o app conferiu os dados no Perfil; um estado novo ainda mostra valores de exemplo
+        out["profile"]["confirmado"] = bool(out["assess"].get("done"))
     if not isinstance(out["reminders"].get("dias"), list):
         out["reminders"]["dias"] = list(d["reminders"]["dias"])
     if (out.get("v") or 0) < VERSAO:
@@ -145,6 +176,28 @@ def mesclar(o: dict | None) -> dict:
             out["profile"]["limitacao"] = ""
         out["v"] = VERSAO
     return out
+
+
+def _data_valida(x) -> bool:
+    try:
+        pd(str(x))
+        return True
+    except ValueError:
+        return False
+
+
+def _pesagem_valida(w) -> bool:
+    return isinstance(w, dict) and _data_valida(w.get("date")) and ok(num(w.get("peso"))) and 20 <= num(w.get("peso")) <= 400
+
+
+def _sessao_valida(x, em_andamento: bool = False) -> bool:
+    """Estrutura mínima de uma sessão. Exercícios fora do catálogo atual são aceitos no histórico (versões antigas),
+    mas não numa sessão em andamento, que precisa da prescrição de cada um."""
+    if not (isinstance(x, dict) and _data_valida(x.get("date")) and isinstance(x.get("ex", []), list)):
+        return False
+    return all(isinstance(e, dict) and isinstance(e.get("sets"), list) and isinstance(e.get("id"), str)
+               and (e["id"] in D.EXERCICIOS or not em_andamento) and all(isinstance(z, dict) for z in e["sets"])
+               for e in x.get("ex", []))
 
 
 # ---------------------------------------------------------------- exercícios
@@ -381,7 +434,7 @@ def ex_sessao(S: dict, se: dict) -> dict:
 def nova_entrada(S: dict, ex_id: str, presc: dict | None = None) -> dict:
     e = {**get_ex(S, ex_id), **(presc or {})}
     n = 1 if e["tipo"] == "tempo" else max(1, min(10, int(e.get("series") or 1)))
-    o = {"id": ex_id, "sets": [{"done": False, "load": "", "reps": "", "min": ""} for _ in range(n)],
+    o = {"id": ex_id, "uid": novo_id(), "sets": [{"done": False, "load": "", "reps": "", "min": ""} for _ in range(n)],
          "rpe": "", "painLevel": "nenhum", "pain": "", "done": False}
     if presc:
         o["presc"] = {k: presc[k] for k in ("series", "reps", "descanso", "duracao") if k in presc}
@@ -424,6 +477,22 @@ def marcar_serie(S: dict, i: int, j: int, feito: bool) -> int:
     return int(e.get("descanso") or 0)
 
 
+def garantir_uids(a: dict) -> bool:
+    """Dá identificador próprio a cada exercício da sessão (sessões antigas não tinham). True se mudou algo."""
+    mudou = False
+    for e in a.get("ex", []):
+        if not e.get("uid"):
+            e["uid"] = novo_id()
+            mudou = True
+    return mudou
+
+
+def remover_exercicio_sessao(S: dict, i: int) -> dict:
+    """Tira o exercício i da sessão em andamento e devolve o que foi removido."""
+    a = S["active"]
+    return a["ex"].pop(i)
+
+
 def volume(sessao: dict) -> float:
     v = 0.0
     for e in sessao.get("ex", []):
@@ -461,7 +530,8 @@ def energia_semana(S: dict, ws: str) -> dict:
     for s in S["sessions"]:
         if s["date"] in ds:
             en = energia(S, s)
-            k += en["kcal"]
+            # usa as kcal gravadas ao salvar a sessão (peso daquele dia), não as recalculadas com o peso de hoje
+            k += s["kcal"] if ok(s.get("kcal")) else en["kcal"]
             c += en["cardioMin"]
     return {"kcal": k, "cardioMin": c}
 

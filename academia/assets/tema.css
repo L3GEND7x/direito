@@ -286,6 +286,12 @@ div[data-testid="stMetricLabel"] p { color: var(--text-2) !important; }
 @keyframes fl-pulso { 0% { transform: scale(.97); opacity: .4; } 100% { transform: scale(1); opacity: 1; } }
 .fl-ex-ok { color: var(--success); font-weight: 600; font-size: var(--fs-small); }
 
+/* fotos do movimento */
+.fl-fotos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 2px 0 12px; }
+.fl-fotos figure { margin: 0; }
+.fl-fotos img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--r-md); background: var(--surface-2); display: block; }
+.fl-fotos figcaption { font-size: var(--fs-caption); color: var(--text-2); text-align: center; margin-top: 4px; }
+
 /* resumo da sessão */
 .fl-fim { text-align: center; padding: var(--sp-5) var(--sp-4) var(--sp-4); }
 .fl-fim .check { width: 72px; height: 72px; margin: 0 auto var(--sp-3); border-radius: 50%; background: var(--success-soft); display: grid; place-items: center; animation: fl-pulso 420ms var(--ease) both; }
