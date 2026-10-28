@@ -288,7 +288,19 @@ class LojaSupabase:
         if r.status_code == 401 and usuario and usuario.get("refresh") and not renovado:
             self._renovar(usuario)  # token de acesso expirou (dura 1 h): renova uma vez e repete
             return self._req(metodo, caminho, usuario, headers=headers, renovado=True, **kw)
+        if r.status_code == 429:
+            raise ErroAutenticacao(self._limite(caminho))
         return r
+
+    @staticmethod
+    def _limite(caminho: str) -> str:
+        """Mensagem para o limite de pedidos do Supabase (HTTP 429), conforme o que foi pedido."""
+        if caminho.startswith(("/auth/v1/signup", "/auth/v1/recover")):
+            return ("O limite de e-mails do servidor foi atingido (cadastros e recuperações de senha enviam e-mail). "
+                    "Aguarde alguns minutos — se continuar, até 1 hora — e tente de novo.")
+        if caminho.startswith("/auth/v1/token"):
+            return "Muitas tentativas de entrada em pouco tempo. Aguarde alguns minutos e tente de novo."
+        return "Muitos pedidos em pouco tempo. Aguarde alguns minutos e tente de novo."
 
     def _renovar(self, usuario: dict) -> None:
         r = self._req("POST", "/auth/v1/token?grant_type=refresh_token", json={"refresh_token": usuario["refresh"]})
@@ -357,8 +369,6 @@ class LojaSupabase:
         if voltar_para:
             caminho += "?redirect_to=" + quote(f"{voltar_para.rstrip('/')}/?rec={chave}", safe="")
         r = self._req("POST", caminho, json={"email": email, "code_challenge": desafio, "code_challenge_method": "s256"})
-        if r.status_code == 429:
-            raise ErroAutenticacao("Muitos pedidos de recuperação. Aguarde alguns minutos e tente de novo.")
         if r.status_code >= 500:
             raise ErroArmazenamento(f"O servidor não enviou o e-mail (código {r.status_code}). Tente mais tarde.")
 

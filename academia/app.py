@@ -5,17 +5,37 @@ No celular: streamlit run app.py --server.address 0.0.0.0  e abra http://IP-DO-C
 """
 from __future__ import annotations
 
+import hashlib
 import html
+import importlib
 import json
 import os
 import re
+import sys
 import time
 import urllib.request
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+
+# No Streamlit Cloud, uma atualização do repositório nem sempre reinicia o processo: este arquivo roda na versão
+# nova, mas os módulos do app importados antes continuam na versão antiga (e falta o que foi acrescentado neles).
+# Antes de importá-los, recarrega os que mudaram no disco — na ordem das dependências.
+for _nome in ("foco_leve.dados", "foco_leve.regras", "foco_leve.plano", "foco_leve.evolucao",
+              "foco_leve.armazenamento", "ui"):
+    _mod = sys.modules.get(_nome)
+    if _mod is None:
+        continue  # ainda não importado: o import abaixo já lê a versão do disco
+    try:
+        _mtime = Path(_mod.__file__).stat().st_mtime
+    except (OSError, TypeError):
+        continue
+    if getattr(_mod, "_fl_mtime", None) != _mtime:  # mudou, ou foi importado por uma versão anterior deste arquivo
+        _mod = importlib.reload(_mod)
+        _mod._fl_mtime = _mtime
 
 import ui
 from foco_leve import armazenamento as A
@@ -24,6 +44,10 @@ from foco_leve import evolucao as E
 from foco_leve import plano as P
 from foco_leve import regras as R
 from foco_leve.regras import br, brx, fmt_d, fmt_dy, num, ok
+
+for _mod in (ui, A, D, E, P, R):  # carregados agora: marca a versão do disco
+    if not hasattr(_mod, "_fl_mtime"):
+        _mod._fl_mtime = Path(_mod.__file__).stat().st_mtime
 
 st.set_page_config(page_title="Foco Leve", page_icon="💪", layout="centered")
 
@@ -255,6 +279,9 @@ def estado() -> dict:
         v = LOJA.versao(u)
         if "S" not in st.session_state or (st.session_state.get("versao") != v and not st.session_state.get("pendente")):
             st.session_state.S, st.session_state.versao = LOJA.carregar_com_versao(u)
+            if not st.session_state.S.get("semente"):
+                # rotação própria da conta na escolha dos exercícios (estável: vem do identificador da conta)
+                st.session_state.S["semente"] = int(hashlib.sha256(str(u["id"]).encode()).hexdigest()[:8], 16) % 9973
     except A.ErroAutenticacao as e:
         sair()
         st.session_state.aviso_login = str(e)
@@ -687,7 +714,7 @@ def form_dados_iniciais() -> None:
             S["schedule"] = P.agenda_para(int(dias))
             if not any(w["date"] == t for w in S["weights"]):
                 S["weights"].append({"id": R.novo_id(), "date": t, "peso": novos["pesoInicial"], "cintura": None,
-                                     "cond": "Informado no primeiro acesso", "obs": ""})
+                                     "cond": P.PESAGEM_INICIAL, "obs": ""})
             salvar()
             st.rerun()
 
@@ -886,6 +913,10 @@ def tela_treinos() -> None:
         st.caption(":material/info: " + x)
     if pl["bloqueados"]:
         st.warning("**Fora do plano por segurança:**  \n" + "  \n".join(f"{R.nome_ex(x)}: {m}" for x, m in pl["bloqueados"]))
+    with st.expander(":material/tune: Como este treino foi montado para você"):
+        st.markdown("\n".join(f"- {x}" for x in P.resumo_personalizacao(S, pw)))
+        st.caption("A escolha dos exercícios também segue uma ordem própria da sua conta, que muda a cada semana. "
+                   "Mudou peso, nível, dias, tempo ou limitações? Atualize no Perfil ou em “Editar meus dados” no Início.")
     with st.container():
         if d == t:
             if st.session_state.get("pre_inicio"):
@@ -1638,6 +1669,11 @@ def tela_perfil() -> None:
                 salvar()
                 st.session_state.aviso = ("ok", "Perfil salvo", "O plano foi recalculado com os dados novos. O histórico foi mantido.")
                 st.rerun()
+    if S["weights"]:
+        ult = R.pesos_ordenados(S)[-1]
+        st.caption(f"Peso atual: {br(ult['peso'])} kg (última pesagem, em {fmt_dy(ult['date'])}). "
+                   "Para registrar um peso novo, use Evolução ou “Editar meus dados” no Início; "
+                   "mudar o peso inicial aqui corrige também a pesagem do primeiro acesso.")
     i0, i1 = R.imc(S, p["pesoInicial"]), R.imc(S, R.peso_atual(S))
     st.caption(f"IMC inicial: {br(i0)} kg/m² · IMC atual: {br(i1)} kg/m² ({R.imc_categoria(i1)}). Indicador de triagem, não é diagnóstico.")
 

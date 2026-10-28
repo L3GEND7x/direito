@@ -197,6 +197,7 @@ class SupabaseFalso:
         self.expirar_proximo = False
         self.fora_do_ar = False
         self.emitidos = 0
+        self.limite = False  # simula o HTTP 429 (limite de pedidos/e-mails do Supabase)
         self.codigos = {}
         self.links = {}  # e-mail -> endereço do link de recuperação (o que a pessoa abriria)
         self.pkce = {}  # código do link -> (uid, desafio)
@@ -212,6 +213,8 @@ class SupabaseFalso:
         self.chamadas.append((metodo, url))
         if self.fora_do_ar:
             raise ConnectionError("sem rede")
+        if self.limite:
+            return Resposta(429, {"msg": "email rate limit exceeded"})
         caminho = url.split("supabase.test", 1)[1]
         if caminho == "/auth/v1/signup":
             if any(e == json["email"] for e, _ in self.usuarios.values()):
@@ -370,6 +373,20 @@ def test_supabase_recuperacao_por_link_pkce(supa):
     loja.definir_senha(u, "nova-senha-456")
     assert loja.entrar("ana@exemplo.com", "nova-senha-456")["id"] == u["id"]
     loja.enviar_recuperacao("ninguem@exemplo.com", "https://app.test")  # sem conta: mesma resposta, sem link
+
+
+def test_supabase_limite_de_pedidos_tem_mensagem_clara(supa):
+    loja, falso = supa
+    loja.criar_conta("ana@exemplo.com", "senha-segura-1")
+    falso.limite = True
+    for acao, trecho in [(lambda: loja.criar_conta("beto@exemplo.com", "senha-segura-1"), "limite de e-mails"),
+                         (lambda: loja.enviar_recuperacao("ana@exemplo.com", "https://app.test"), "limite de e-mails"),
+                         (lambda: loja.entrar("ana@exemplo.com", "senha-segura-1"), "tentativas de entrada")]:
+        with pytest.raises(A.ErroAutenticacao) as e:
+            acao()
+        assert trecho in str(e.value) and "429" not in str(e.value)
+    falso.limite = False
+    assert loja.entrar("ana@exemplo.com", "senha-segura-1")["email"] == "ana@exemplo.com"
 
 
 def test_supabase_ids_manipulados_validacao_e_exclusao(supa):

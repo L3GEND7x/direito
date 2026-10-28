@@ -192,3 +192,50 @@ def test_troca_de_aparelho_respeita_limitacoes(S):
     S["profile"]["limitacao"] = "dor no joelho"
     alternativas = [x for x in D.ALTERNATIVAS["leg_press"] if not P.motivo_bloqueio(S, x, 3)]
     assert alternativas == []  # agachamento e avanço também forçam o joelho
+
+
+# ---------------------------------------------------------------- personalização por pessoa
+def _perfil(nivel="Iniciante", semente=0):
+    S = R.padrao()
+    S["profile"].update({"pesoInicial": 100, "pesoMeta": 80, "altura": 175, "idade": 30, "dias": 5, "tempoMax": 120,
+                         "nivel": nivel, "confirmado": True})
+    S["assess"].update({"done": True, "dor": "nao", "inchaco": "nao", "caminhar": "nao", "diag": "nao",
+                        "liberacao": "sim", "lesao": "nao"})
+    S["weights"] = [{"id": "w0", "date": "2026-10-01", "peso": 100, "cond": P.PESAGEM_INICIAL}]
+    if semente:
+        S["semente"] = semente
+    return S
+
+
+def _exercicios(S, semana, wk):
+    return [it["id"] for it in P.plano_do_dia(S, "2026-10-05", semana, wk)["itens"]]
+
+
+def test_contas_diferentes_recebem_treinos_diferentes():
+    iguais = sum(_exercicios(_perfil(semente=1), sem, wk) == _exercicios(_perfil(semente=2), sem, wk)
+                 for sem in range(1, 21) for wk in ("A", "B", "LA", "LB", "FULL"))
+    assert iguais < 100 * 0.5  # mesmo perfil, contas diferentes: a maioria dos treinos difere
+    # e a mesma conta continua com o mesmo plano (estável entre acessos)
+    assert _exercicios(_perfil(semente=7), 3, "A") == _exercicios(_perfil(semente=7), 3, "A")
+
+
+def test_nivel_muda_volume_e_exercicios():
+    ini, inter, av = _perfil("Iniciante"), _perfil("Intermediário"), _perfil("Avançado")
+    assert len(_exercicios(inter, 1, "A")) > len(_exercicios(ini, 1, "A"))  # complementares desde a 1ª semana
+    series = {n: [it["series"] for it in P.plano_do_dia(S, "2026-10-05", 10, "A")["itens"] if "duracao" not in it]
+              for n, S in (("ini", ini), ("av", av))}
+    assert max(series["av"]) == 4 and max(series["ini"]) == 3
+    assert any("Avançado" in x for x in P.resumo_personalizacao(av, 10))
+
+
+def test_peso_inicial_corrige_a_pesagem_do_primeiro_acesso():
+    S = _perfil()
+    S["profile"]["pesoInicial"] = 90
+    S["weights"][0]["peso"] = 90  # digitou 90 no primeiro acesso
+    S["profile"]["pesoMeta"] = 90
+    assert R.peso_atual(S) == 90 and P.cardio_semanal_alvo(S) == 150
+    P.atualizar_perfil(S, {"pesoInicial": 115.0})
+    assert R.peso_atual(S) == 115 and P.cardio_semanal_alvo(S) == 250  # Início e plano passam a usar 115
+    S["weights"].append({"id": "w1", "date": "2026-10-10", "peso": 112.0, "cond": "", "obs": ""})
+    P.atualizar_perfil(S, {"pesoInicial": 116.0})
+    assert [w["peso"] for w in R.pesos_ordenados(S)] == [116.0, 112.0]  # pesagens posteriores não mudam

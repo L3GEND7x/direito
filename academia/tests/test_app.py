@@ -123,6 +123,13 @@ def test_isolamento_entre_contas():
     con = sqlite3.connect(os.environ["FOCO_LEVE_DB"])
     donos = [r[0] for r in con.execute("SELECT usuario FROM estado")]
     assert "padrao" not in donos and len(set(donos)) == len(donos)  # nenhum identificador fixo compartilhado
+    # cada conta tem a própria rotação de exercícios, estável entre acessos
+    sa, sb = a2.session_state["S"]["semente"], b2.session_state["S"]["semente"]
+    assert sa and sb and sa != sb and entrar(abrir(), "carla@exemplo.com").session_state["S"]["semente"] == sa
+    a2.radio(key="aba").set_value("Treinos").run()
+    assert not a2.exception and any("montado para você" in e.label for e in a2.expander)
+    a2.radio(key="aba").set_value("Perfil").run()
+    assert any("Peso atual: 101,1 kg" in c.value for c in a2.caption)
 
 
 def textos(no) -> str:
@@ -313,3 +320,17 @@ def test_secrets_salvos_com_o_app_no_ar_valem_sem_reiniciar(monkeypatch):
     monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-teste")
     at = abrir()  # mesmo processo, sem limpar cache
     assert not at.error and any(x.key == "login_email" for x in at.text_input)
+
+
+def test_atualizacao_sem_reiniciar_recarrega_os_modulos(monkeypatch):
+    """Streamlit Cloud: app.py novo com o módulo ui antigo na memória (sem AJUSTES_PAGINA) não pode quebrar."""
+    import ui
+    abrir()
+    monkeypatch.delattr(ui, "AJUSTES_PAGINA")  # o "ui" antigo, de antes da atualização
+    monkeypatch.delattr(ui, "_fl_mtime")       # importado por uma versão anterior do app.py
+    at = abrir()
+    assert not at.exception and hasattr(ui, "AJUSTES_PAGINA")
+    monkeypatch.delattr(ui, "AJUSTES_PAGINA")
+    ui._fl_mtime = 0                            # arquivo mudou no disco depois da carga
+    at = abrir()
+    assert not at.exception and hasattr(ui, "AJUSTES_PAGINA")

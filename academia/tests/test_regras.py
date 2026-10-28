@@ -47,10 +47,12 @@ def test_seguranca(S):
 
 
 def test_sessao_autopreenchimento_e_energia(S):
-    S["profile"]["nivel"] = "Intermediário"  # 3 séries desde a semana 1
+    S["profile"]["nivel"] = "Intermediário"  # 3 séries e exercícios complementares desde a semana 1
     R.iniciar_sessao(S, "A")
     a = S["active"]
-    assert len(a["ex"]) == 6 and a["semana"] == 1
+    from foco_leve import plano as P
+    assert [e["id"] for e in a["ex"]] == [it["id"] for it in P.plano_do_dia(S, R.hoje(), wk="A")["itens"]]
+    assert len(a["ex"]) == 7 and a["semana"] == 1
     a["ex"][0]["sets"][0]["load"] = "40"
     descanso = R.marcar_serie(S, 0, 0, True)
     assert descanso == 75  # descanso da fase 1
