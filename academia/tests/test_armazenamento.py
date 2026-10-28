@@ -184,6 +184,7 @@ def test_backup_e_restauracao_preservam_os_registros(loja):
 class Resposta:
     def __init__(self, status, corpo=None):
         self.status_code, self._corpo = status, corpo
+        self.text = json.dumps(corpo) if corpo is not None else ""
 
     def json(self):
         return self._corpo
