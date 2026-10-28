@@ -47,20 +47,11 @@ O plano não substitui avaliação médica nem a orientação do profissional de
 
 ## Visual
 
-Tema vermelho e preto com fontes Teko (títulos) e Poppins (texto), carregadas do Google Fonts.
-Sem internet, o app usa a fonte padrão do sistema; as cores e o layout continuam iguais.
-
-## Publicar online (Streamlit Community Cloud)
-
-1. Entre em https://share.streamlit.io com a conta do GitHub.
-2. **Create app** → repositório `L3GEND7x/direito`, branch `main`, arquivo principal `academia/app.py`.
-3. Clique em **Deploy**. O app funciona do Python 3.12 ao 3.14 (testado nos dois extremos).
-
-O tema vermelho e preto online vem de `.streamlit/config.toml` na raiz do repositório;
-a cópia em `academia/.streamlit/` vale quando o app roda no computador, de dentro desta pasta.
-
-Atenção: online, o banco SQLite fica no servidor e é apagado quando o app reinicia ou é atualizado.
-Baixe a cópia de segurança em Perfil com frequência. O app não tem login: quem tiver o link vê e altera os dados.
+Interface escura inspirada em apps nativos de saúde: preto profundo, superfícies grafite, um único vermelho de destaque,
+tipografia do sistema (SF Pro no iPhone e no Mac; Inter, do Google Fonts, nos demais aparelhos), barra de abas fixa no rodapé
+com ícones, anéis de progresso, linha do tempo das 20 semanas e gráficos com os dados registrados.
+O tema fica em `assets/tema.css` (variáveis de cor, tipografia, espaçamento, raios e sombras) e os componentes em `ui.py`.
+Respeita a preferência do sistema por movimento reduzido. Sem internet, a fonte cai para a do sistema e o resto continua igual.
 
 ## Onde ficam os dados
 
@@ -71,9 +62,12 @@ Em Perfil → Cópia de segurança é possível baixar e restaurar um `.json`, i
 
 ```
 app.py                     interface (5 abas: Início, Treinos, Evolução, Hábitos, Perfil)
+ui.py                      componentes visuais (anéis, semana, linha do tempo, estados vazios)
+assets/tema.css            sistema de design (variáveis, componentes, barra inferior)
 foco_leve/dados.py         31 exercícios, 8 treinos, alternativas, intensidades de cardio, fontes
 foco_leve/regras.py        segurança, agenda, sessão, progressão, calorias, relatório
 foco_leve/plano.py         plano personalizado de 20 semanas
+foco_leve/evolucao.py      números da evolução calculados só com dados registrados
 foco_leve/armazenamento.py SQLite e importação de cópias
 tests/                     testes automáticos (pytest)
 ```

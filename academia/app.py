@@ -10,14 +10,15 @@ import json
 import time
 import urllib.request
 from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+import ui
 from foco_leve import armazenamento as A
 from foco_leve import dados as D
+from foco_leve import evolucao as E
 from foco_leve import plano as P
 from foco_leve import regras as R
 from foco_leve.regras import br, brx, fmt_d, fmt_dy, num, ok
@@ -26,80 +27,7 @@ st.set_page_config(page_title="Foco Leve", page_icon="💪", layout="centered")
 
 PASTA_FOTOS = A.CAMINHO_PADRAO.parent / "fotos"
 
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500&family=Teko:wght@500;600;700&display=swap');
-:root{--vermelho:#ef233c;--vermelho-claro:#ff5266;--vermelho-escuro:#b5122a;--preto:#09090b;--painel:#151519;--cinza:#a1a1aa;--borda:#303036;
---grad:linear-gradient(100deg,#ff5266 0%,#ef233c 45%,#b5122a 100%);--titulo:'Teko','Poppins',sans-serif}
-.stApp{background:radial-gradient(ellipse at 50% -10%,rgba(239,35,60,.16),transparent 45%),linear-gradient(180deg,#151519 0%,#09090b 38%);color:#f4f4f5;font-family:'Poppins',sans-serif}
-.block-container{padding-top:2.6rem;padding-bottom:3rem;max-width:860px}
-header[data-testid="stHeader"]{background:transparent}
-[data-testid="stSidebar"]{background:#111114;border-right:1px solid #303036}
-.stApp [data-testid="stMarkdownContainer"],.stApp p,.stApp li,.stApp label,.stApp input,.stApp textarea,.stApp button,.stApp [data-baseweb="select"] div,.stApp small{font-family:'Poppins',sans-serif!important}
-h1,h2,h3,h4{font-family:var(--titulo)!important;font-weight:600!important;letter-spacing:.01em;line-height:1.05!important}
-h2{font-size:2.3rem!important}h3{font-size:2rem!important}h4{font-size:1.55rem!important}
-/* marca */
-.fl-marca{font-family:var(--titulo)!important;font-weight:700;letter-spacing:.06em;color:#f4f4f5;font-size:2.7rem!important;margin:0;line-height:1!important;text-transform:uppercase}
-.fl-marca:before{content:' ';display:inline-block;width:7px;height:.72em;background:var(--grad);border-radius:4px;margin-right:12px;vertical-align:.02em}
-.fl-sub{color:#a1a1aa;margin:2px 0 1.1rem 19px;font-size:.9rem;font-style:italic;letter-spacing:.02em}
-/* navegação: abas sublinhadas */
-.st-key-aba [role="radiogroup"]{gap:2px 22px;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;border-bottom:1px solid #26262b;padding-bottom:2px}
-.st-key-aba [role="radiogroup"] label{background:transparent!important;border:0!important;border-radius:0!important;padding:6px 2px 9px!important;margin:0;position:relative;flex:0 0 auto}
-.st-key-aba [role="radiogroup"] label>div:first-child{display:none}
-.st-key-aba [role="radiogroup"] label p{font-style:italic;color:#a1a1aa;font-size:.98rem}
-.st-key-aba [role="radiogroup"] label:has(input:checked) p{color:#fff;font-weight:600}
-.st-key-aba [role="radiogroup"] label:has(input:checked):after{content:'';position:absolute;left:0;right:0;bottom:-3px;height:3px;border-radius:3px;background:var(--grad)}
-/* opções em formulários */
-.stRadio [role="radiogroup"]{gap:8px}
-.stRadio [role="radiogroup"] label{background:#151519;border:1px solid #303036;border-radius:999px;padding:7px 14px}
-.stRadio [role="radiogroup"] label:has(input:checked){border-color:#ef233c;background:rgba(239,35,60,.12)}
-/* botões em pílula com gradiente */
-.stButton>button,.stFormSubmitButton>button,.stDownloadButton>button{border-radius:999px;font-weight:600;min-height:2.7rem;padding:0 1.4rem;transition:all .18s ease}
-button[kind="primary"],button[kind="primaryFormSubmit"]{background:var(--grad)!important;border:0!important;color:#fff!important;font-family:var(--titulo);font-size:1.3rem!important;letter-spacing:.03em;box-shadow:0 8px 22px -10px rgba(239,35,60,.75)}
-.stApp button[kind="primary"] p,.stApp button[kind="primaryFormSubmit"] p{font-size:1.3rem!important;font-family:var(--titulo)!important;font-weight:600;line-height:1}
-button[kind="primary"]:hover,button[kind="primaryFormSubmit"]:hover{filter:brightness(1.08);transform:translateY(-1px)}
-button[kind="secondary"],button[kind="secondaryFormSubmit"],.stDownloadButton>button{background:transparent!important;border:1px solid #3b3b44!important;color:#f4f4f5!important}
-button[kind="secondary"]:hover,button[kind="secondaryFormSubmit"]:hover,.stDownloadButton>button:hover{border-color:#ef233c!important;color:#ff5266!important}
-button:focus-visible{box-shadow:0 0 0 .2rem rgba(239,35,60,.35)!important}
-/* cartões */
-/* só os contêineres com borda (os sem borda usam a classe vazia st-emotion-cache-0 no Streamlit 1.41) */
-[data-testid="stVerticalBlockBorderWrapper"]:not(.st-emotion-cache-0),[data-testid="stForm"]{border-color:#26262b!important;border-radius:24px!important;background:linear-gradient(160deg,#1a1a1f 0%,#0e0e11 100%)}
-[data-testid="stMetric"]{background:linear-gradient(160deg,#1c1c22,#101013);border:1px solid #26262b;border-radius:20px;padding:14px 18px}
-div[data-testid="stMetricValue"],div[data-testid="stMetricValue"] *{font-family:var(--titulo)!important;font-variant-numeric:tabular-nums;color:#fff;font-weight:600;font-size:2.2rem;line-height:1.1}
-div[data-testid="stMetricLabel"] p{color:#a1a1aa;font-style:italic}
-[data-testid="stImage"] img{border-radius:18px}
-[data-testid="stExpander"] details{border-color:#26262b;border-radius:16px;overflow:hidden}
-/* campos sublinhados, como no login do modelo */
-[data-baseweb="input"],[data-baseweb="textarea"]{background:transparent!important;border:0!important;border-bottom:1.5px solid #4a4a52!important;border-radius:0!important}
-[data-baseweb="input"]:focus-within,[data-baseweb="textarea"]:focus-within{border-bottom-color:#ef233c!important}
-[data-baseweb="input"] input,[data-baseweb="base-input"],textarea{background:transparent!important;color:#f4f4f5!important}
-[data-baseweb="select"]>div{background-color:#151519!important;color:#f4f4f5!important;border-color:#3b3b44!important;border-radius:14px!important}
-[data-testid="stWidgetLabel"] p{font-style:italic;color:#c4c4cc}
-[data-testid="stAlertContainer"]{border-radius:16px}
-[data-testid="stAlertContainer"]:has([data-testid="stAlertContentInfo"]){background:rgba(239,35,60,.08);border-left:4px solid #ef233c}
-[data-testid="stAlertContentInfo"]{color:#f4f4f5}
-[data-testid="stProgress"] div[role="progressbar"]>div>div>div{background:var(--grad)!important}
-hr{border-color:#26262b}
-small,.stCaption{color:#a1a1aa}
-/* elementos próprios */
-.fl-presc{color:#ff5266;font-weight:600;font-size:1.02rem}
-.fl-rec{background:var(--grad);border-radius:22px 22px 22px 6px;padding:14px 18px;font-size:.88rem;color:#fff;line-height:1.5;margin:4px 0 10px}
-.fl-hero{position:relative;border-radius:28px;overflow:hidden;min-height:330px;padding:26px 24px 22px;display:flex;flex-direction:column;justify-content:flex-end;
-background-color:#151519;background-size:cover;background-position:center 30%;border:1px solid #26262b;margin-bottom:14px}
-.fl-chip{align-self:flex-start;font-size:.72rem;letter-spacing:.12em;font-weight:600;color:#fff;background:rgba(239,35,60,.9);border-radius:999px;padding:4px 11px;margin-bottom:10px}
-.fl-hero-tit{font-family:var(--titulo)!important;font-weight:700;font-size:2.9rem!important;line-height:.95;text-transform:uppercase;color:#fff;margin:0 0 6px}
-.fl-hero .fl-texto{color:#e4e4e7;margin:0 0 12px;font-size:.92rem}
-.fl-ficha{display:grid;grid-template-columns:auto 1fr;gap:4px 26px;font-size:.9rem}
-.fl-ficha span{color:#a1a1aa;font-style:italic}.fl-ficha b{color:#fff;font-style:italic;font-weight:600}
-.fl-grade{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin:6px 0 14px}
-.fl-tile{background:linear-gradient(160deg,#1c1c22,#101013);border:1px solid #26262b;border-radius:22px;padding:14px 16px;min-height:104px;display:flex;flex-direction:column;gap:2px}
-.fl-tile.destaque{background:var(--grad);border:0;box-shadow:0 12px 28px -14px rgba(239,35,60,.8)}
-.fl-tile small{color:#a1a1aa;font-style:italic;font-size:.8rem}.fl-tile.destaque small,.fl-tile.destaque em{color:rgba(255,255,255,.85)}
-.fl-tile b{font-family:var(--titulo);font-size:2.1rem;font-weight:600;line-height:1;color:#fff;margin-top:6px}
-.fl-tile em{font-size:.78rem;color:#a1a1aa;font-style:normal;margin-top:2px}
-@media(max-width:600px){.block-container{padding-left:1rem;padding-right:1rem;padding-top:2.4rem}.fl-marca{font-size:2.3rem!important}
-.fl-grade{grid-template-columns:repeat(2,1fr)}.fl-hero{min-height:300px}.fl-hero-tit{font-size:2.5rem!important}}
-</style>""", unsafe_allow_html=True)
+st.markdown(ui.tema_css(), unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------ estado
@@ -148,10 +76,10 @@ def mostrar_fotos(ex_id: str) -> None:
 def capa(ex_ids, chip: str, titulo: str, texto: str = "", ficha=()) -> None:
     """Capa com foto de fundo, no estilo do modelo (foto do primeiro exercício que tiver imagem)."""
     pasta = next((D.FOTOS[i] for i in ex_ids if D.FOTOS.get(i)), None)
-    fundo = "linear-gradient(180deg,rgba(9,9,11,.10) 0%,rgba(9,9,11,.55) 45%,#09090b 92%)"
+    fundo = "linear-gradient(180deg,rgba(0,0,0,.05) 0%,rgba(0,0,0,.55) 48%,rgba(0,0,0,.94) 100%)"
     if pasta:
         fundo += f",url('{D.FOTO_URL_BASE}{pasta}/0.jpg')"
-    linhas = "".join(f"<span>{html.escape(k)}</span><b>{html.escape(v)}</b>" for k, v in ficha)
+    linhas = "".join(f"<div><span>{html.escape(k)}</span><b>{html.escape(v)}</b></div>" for k, v in ficha)
     st.markdown(f"<div class='fl-hero' style=\"background-image:{fundo}\"><span class='fl-chip'>{html.escape(chip)}</span>"
                 f"<div class='fl-hero-tit'>{html.escape(titulo)}</div>" + (f"<div class='fl-texto'>{html.escape(texto)}</div>" if texto else "")
                 + (f"<div class='fl-ficha'>{linhas}</div>" if linhas else "") + "</div>", unsafe_allow_html=True)
@@ -159,9 +87,22 @@ def capa(ex_ids, chip: str, titulo: str, texto: str = "", ficha=()) -> None:
 
 def cartoes(itens) -> None:
     """Grade de indicadores: (rótulo, valor, nota opcional, destaque)."""
-    blocos = "".join(f"<div class='fl-tile{' destaque' if dest else ''}'><small>{html.escape(r)}</small><b>{html.escape(v)}</b>"
-                     + (f"<em>{html.escape(n)}</em>" if n else "") + "</div>" for r, v, n, dest in itens)
-    st.markdown(f"<div class='fl-grade'>{blocos}</div>", unsafe_allow_html=True)
+    html_md(ui.grade(itens))
+
+
+def html_md(conteudo: str) -> None:
+    st.markdown(conteudo, unsafe_allow_html=True)
+
+
+def cabecalho(titulo: str, sobre: str = "") -> None:
+    html_md(ui.cabecalho(titulo, sobre))
+
+
+def data_extensa(d: str) -> str:
+    x = R.pd(d)
+    meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro",
+             "novembro", "dezembro"]
+    return f"{D.DIAS_SEMANA[R.dia_js(d)]}, {x.day} de {meses[x.month - 1]}"
 
 
 def prescricao(e: dict) -> str:
@@ -170,47 +111,67 @@ def prescricao(e: dict) -> str:
     return f"{e['series']} × {e['reps']}" + (" (sem carga)" if e.get("semCarga") else "") + f" · descanso {e['descanso']} s"
 
 
+def prescricao_html(e: dict) -> str:
+    if e["tipo"] == "tempo":
+        return f"<span class='fl-presc'>{e['duracao']} min <span>· {html.escape(e['grupo'])}</span></span>"
+    extra = " (sem carga)" if e.get("semCarga") else ""
+    return (f"<span class='fl-presc'>{e['series']} × {html.escape(str(e['reps']))}{extra} "
+            f"<span>· descanso {e['descanso']} s · {html.escape(e['grupo'])}</span></span>")
+
+
+def como_executar(e: dict, ex_id: str) -> None:
+    """Fotos, passos e alertas: recolhidos para não poluir a tela durante o treino."""
+    with st.expander("Como executar"):
+        mostrar_fotos(ex_id)
+        st.caption("Músculos: " + e["musculos"])
+        for n, passo in enumerate(e["instrucoes"], 1):
+            st.markdown(f"{n}. {passo}")
+        for a in e["alertas"]:
+            st.caption(":material/warning: " + a)
+
+
 def cartao_exercicio(ex_id: str, com_rec: bool, presc: dict | None = None) -> None:
     e = {**R.get_ex(S, ex_id), **(presc or {})}
     livre, msg = R.status_ex(S, ex_id)
     with st.container(border=True):
-        mostrar_fotos(ex_id)
         st.markdown(f"#### {e['nome']}")
-        st.markdown(f"<span class='fl-presc'>{prescricao(e)}</span> · {e['grupo']}", unsafe_allow_html=True)
-        st.caption("Músculos: " + e["musculos"])
+        html_md(prescricao_html(e))
         if not livre:
             st.error(msg)
         elif com_rec:
-            st.markdown(f"<div class='fl-rec'>{R.recomendacao(S, ex_id)}</div>", unsafe_allow_html=True)
-        with st.expander("Como executar"):
-            for n, passo in enumerate(e["instrucoes"], 1):
-                st.markdown(f"{n}. {passo}")
-        for a in e["alertas"]:
-            st.caption("⚠️ " + a)
+            html_md(f"<div class='fl-rec'>{html.escape(R.recomendacao(S, ex_id))}</div>")
+        como_executar(e, ex_id)
 
 
-def cronometro(fim_ms: int) -> None:
+def cronometro(fim_ms: int, total_s: int = 0, proximo: str = "") -> None:
+    """Descanso entre séries: contagem regressiva com barra, vibra no fim (quando o aparelho permite)."""
     components.html(f"""
-<div id="r" style="font-family:Poppins,system-ui,sans-serif;background:linear-gradient(100deg,#ff5266 0%,#ef233c 45%,#b5122a 100%);color:#fff;border-radius:999px;padding:8px 22px;display:flex;justify-content:space-between;align-items:center">
-<span style="font-style:italic">Descanso</span><b id="t" style="font-size:1.6rem;font-variant-numeric:tabular-nums">0:00</b></div>
+<div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif;background:#1c1c1f;border:1px solid rgba(240,54,74,.45);color:#f5f5f7;border-radius:18px;padding:12px 18px 14px">
+<div style="display:flex;justify-content:space-between;align-items:baseline">
+<span style="font-size:13px;color:#a1a1a6;font-weight:600;letter-spacing:.04em;text-transform:uppercase">Descanso</span>
+<b id="t" style="font-size:30px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">0:00</b></div>
+<div style="height:6px;background:#2a2a2e;border-radius:99px;margin-top:8px;overflow:hidden"><div id="b" style="height:100%;width:100%;background:#f0364a;border-radius:99px;transition:width .25s linear"></div></div>
+<div style="font-size:12px;color:#a1a1a6;margin-top:8px">{html.escape(proximo)}</div></div>
 <script>
-const fim={fim_ms};
+const fim={fim_ms}, tot={max(1, total_s)};
 function f(){{const s=Math.ceil((fim-Date.now())/1000);const el=document.getElementById('t');
-if(s<=0){{el.textContent='Pronto!';try{{navigator.vibrate&&navigator.vibrate(200)}}catch(e){{}}return;}}
+document.getElementById('b').style.width=Math.max(0,Math.min(100,s/tot*100))+'%';
+if(s<=0){{el.textContent='Pronto';el.style.color='#30d158';try{{navigator.vibrate&&navigator.vibrate(200)}}catch(e){{}}return;}}
 el.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');setTimeout(f,250);}}f();
-</script>""", height=70)
+</script>""", height=104)
 
 
 def cronometro_sessao(inicio_ms: int, plano_min: int) -> None:
     """Relógio da sessão que anda sozinho no navegador, sem recarregar o app."""
     components.html(f"""
-<div style="font-family:Poppins,system-ui,sans-serif;background:#151519;border:1px solid #303036;color:#f4f4f5;border-radius:999px;padding:8px 22px;display:flex;justify-content:space-between;align-items:center">
-<span style="font-style:italic;color:#a1a1aa">Tempo de treino · plano ≈ {plano_min} min</span><b id="t" style="font-size:1.6rem;font-variant-numeric:tabular-nums">0:00</b></div>
+<div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif;display:flex;justify-content:space-between;align-items:center;color:#f5f5f7;padding:2px 2px">
+<span style="font-size:13px;color:#a1a1a6">Tempo de treino · plano ≈ {plano_min} min</span>
+<b id="t" style="font-size:28px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">0:00</b></div>
 <script>
 const ini={inicio_ms};
 function f(){{const s=Math.max(0,Math.floor((Date.now()-ini)/1000));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
 document.getElementById('t').textContent=(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');setTimeout(f,500);}}f();
-</script>""", height=70)
+</script>""", height=44)
 
 
 def texto_etapas(pl: dict) -> str:
@@ -247,7 +208,7 @@ def validar_perfil(textos: dict) -> tuple[dict, list[str]]:
 def editar_dados() -> None:
     """Edição rápida no Início: muda o perfil e recalcula o plano futuro, sem tocar no histórico."""
     p = S["profile"]
-    with st.expander("✏️ Editar meus dados e recalcular o plano"):
+    with st.expander(":material/edit: Editar meus dados e recalcular o plano"):
         with st.form("dados_inicio"):
             # uma linha de colunas por par de campos: no celular a ordem continua lógica
             c1, c2 = st.columns(2)
@@ -292,13 +253,16 @@ def editar_dados() -> None:
 
 
 # ------------------------------------------------------------------ cabeçalho e navegação
-st.markdown("<div class='fl-marca'>FOCO LEVE</div><div class='fl-sub'>Treino e Emagrecimento</div>", unsafe_allow_html=True)
 ABAS = ["Início", "Treinos", "Evolução", "Hábitos", "Perfil"]
+ICONES = {"Início": ":material/home:", "Treinos": ":material/fitness_center:", "Evolução": ":material/monitoring:",
+          "Hábitos": ":material/water_drop:", "Perfil": ":material/person:"}
 if "aba" not in st.session_state:
     st.session_state.aba = "Início"
 if st.session_state.get("_ir"):
     st.session_state.aba = st.session_state.pop("_ir")
-aba = st.radio("Seção", ABAS, horizontal=True, key="aba", label_visibility="collapsed")
+# barra de abas fixa no rodapé (posicionada pelo tema.css)
+aba = st.radio("Seção", ABAS, horizontal=True, key="aba", label_visibility="collapsed",
+               format_func=lambda k: f"{ICONES[k]} {k}")
 if st.session_state.get("aviso"):
     tipo, tit, txt = st.session_state.pop("aviso")
     aviso(tipo, tit, txt)
@@ -417,76 +381,119 @@ def tela_primeiro_acesso() -> None:
     form_avaliacao()
 
 
+def saudacao() -> str:
+    h = datetime.now().hour
+    return "Bom dia" if 5 <= h < 12 else ("Boa tarde" if 12 <= h < 18 else "Boa noite")
+
+
+def grupos_do_treino(pl: dict) -> str:
+    grupos = []
+    for it in pl["itens"]:
+        g = D.EXERCICIOS[it["id"]]["grupo"]
+        if g not in grupos and g not in ("Cardio", "Recuperação"):
+            grupos.append(g)
+    return " · ".join(grupos)
+
+
+def minutos_cardio(pl: dict) -> int:
+    return int(pl["etapas"].get("Cardio") or 0)
+
+
 def tela_inicio() -> None:
     if not S["assess"]["done"]:
+        cabecalho("Bem-vindo", data_extensa(t))
         # bloco próprio: evita que o formulário seja reaproveitado pelo do check-in após salvar
         with st.container():
             tela_primeiro_acesso()
         return
+    p = S["profile"]
+    nome = (p.get("nome") or "").split()
+    cabecalho(f"{saudacao()}{', ' + nome[0] if nome else ''}", data_extensa(t))
     if R.seguranca(S) == "urgent":
         aviso_urgente()
     lem = R.lembretes(S, datetime.now().strftime("%H:%M"))
     if lem:
-        with st.container(border=True):
-            st.caption("LEMBRETES")
-            for x in lem:
-                st.write(x)
+        st.info("  \n".join(lem))
+
+    # treino de hoje: a ação principal da tela
     wk = R.treino_do_dia(S, t)
     pl = P.plano_do_dia(S, t)
-    ficha = (("Plano", f"semana {pl['semana']} de {D.SEMANAS_PLANO} · {pl['fase']['n']}"),)
-    if wk != "OFF":
-        ficha = (("Duração", f"≈ {pl['total']} min"), ("Exercícios", str(len(pl["itens"])))) + ficha
-    capa([it["id"] for it in pl["itens"]] or ["esteira_caminhada"], f"{D.DIAS_SEMANA[R.dia_js(t)].upper()}, {fmt_dy(t)}",
-         pl["nome"], pl["obj"], ficha)
-    if wk != "OFF" and pl["etapas"]:
-        st.caption(texto_etapas(pl))
-    if wk != "OFF":
+    if wk == "OFF":
+        capa(["esteira_caminhada"], f"SEMANA {pl['semana']} DE {D.SEMANAS_PLANO}", "Descanso",
+             "Hoje é dia de recuperação. Não é preciso compensar treinos.")
+    else:
+        ficha = (("Duração", f"≈ {pl['total']} min"), ("Cardio", f"{minutos_cardio(pl)} min"),
+                 ("Exercícios", str(len(pl["itens"]))))
+        capa([it["id"] for it in pl["itens"]] or ["esteira_caminhada"],
+             f"HOJE · SEMANA {pl['semana']} DE {D.SEMANAS_PLANO}", pl["nome"], grupos_do_treino(pl) or pl["obj"], ficha)
         if S["active"]:
-            st.button("Continuar treino", type="primary", on_click=ir, args=("Treinos",), use_container_width=True)
+            st.button("Continuar treino", type="primary", on_click=ir, args=("Treinos",), use_container_width=True,
+                      key="acao_principal", icon=":material/play_arrow:")
         elif R.feito_em(S, t):
-            st.success("Treino de hoje concluído.")
-        elif st.button("Iniciar treino", type="primary", use_container_width=True):
+            st.success("Treino de hoje concluído. Bom trabalho: agora é recuperar bem.")
+        elif st.button("Iniciar treino", type="primary", use_container_width=True, key="acao_principal",
+                       icon=":material/play_arrow:"):
             tentar_iniciar(wk)
-    checkin()
-    p = S["profile"]
-    cw, ini, meta = R.peso_atual(S), p["pesoInicial"], p["pesoMeta"]
+        st.caption(texto_etapas(pl))
+
+    # progresso: semana do plano, consistência e cardio
     ws = R.inicio_semana(t)
-    ses = [s for s in S["sessions"] if s["date"] in R.dias_da_semana(ws)]
-    st.markdown("### Painel")
-    i = R.imc(S, cw)
-    en = R.energia_semana(S, ws)
-    cartoes([("Peso atual" if S["weights"] else "Peso inicial", f"{br(cw)} kg",
-              f"{'+' if cw > ini else ''}{br(cw - ini)} kg desde o início" if S["weights"] else None, True),
-             ("Meta (sem prazo)", f"{br(meta)} kg", f"faltam {br(max(0, cw - meta))} kg", True),
-             ("IMC (triagem)", br(i), R.imc_categoria(i), False),
-             ("Treinos na semana", f"{sum(1 for s in ses if s.get('status') == 'concluida')} de {R.planejados_semana(S)}", None, False),
-             ("Minutos na semana", br(sum(float(s.get('minutes') or 0) for s in ses), 0), None, False),
-             ("kcal na semana", "≈ " + br(en["kcal"], 0), "estimativa", False)])
-    editar_dados()
-    cm = en["cardioMin"]
-    st.markdown(f"**Cardio na semana: {br(cm, 0)} min** — meta da OMS: 150 a 300 min")
-    st.progress(min(1.0, cm / 300))
-    st.caption(("Dentro da faixa recomendada pela OMS." if 150 <= cm < 300 else "Faixa máxima da OMS atingida." if cm >= 300
-                else f"Faltam {br(150 - cm, 0)} min para o mínimo da OMS.") +
-               " Calorias calculadas pelo Compêndio de Atividades Físicas 2024 (MET × peso × tempo): valores aproximados.")
-    grafico_peso("diario", 180)
+    dias = E.estado_dos_dias(S, ws)
+    feitos = sum(1 for d in dias if d["estado"] == "feito")
+    planejados = sum(1 for d in dias if d["estado"] != "descanso")
+    cm = R.energia_semana(S, ws)["cardioMin"]
+    cons = E.consistencia(S)
+    fi, fase = P.fase_da_semana(pl["semana"])
+    with st.container(border=True):
+        html_md(f"<p class='fl-rotulo'>Semana {pl['semana']} de {D.SEMANAS_PLANO} · Fase {fi + 1} — {html.escape(fase['n'])}</p>")
+        html_md(ui.aneis([
+            ("Treinos na semana", f"{feitos}/{planejados}", "feitos", feitos / planejados if planejados else 0, "var(--accent)"),
+            ("Cardio na semana", br(cm, 0), "de 150 min", cm / 150, "#f5f5f7"),
+            ("Plano de 20 semanas", str(cons["aprovadas"]), "semanas concluídas", cons["aprovadas"] / D.SEMANAS_PLANO, "#8e8e93"),
+        ]) + ui.semana(dias))
+
+    # peso
+    cw, meta = R.peso_atual(S), float(p["pesoMeta"])
+    with st.container(border=True):
+        c1, c2, c3 = st.columns(3)
+        c1.metric("Peso atual" if S["weights"] else "Peso inicial", f"{br(cw)} kg")
+        c2.metric("Meta", f"{br(meta)} kg")
+        c3.metric("Faltam", f"{br(max(0, cw - meta))} kg")
+        if len(S["weights"]) >= 2:
+            grafico_peso("diario", 150)
+        else:
+            html_md(ui.vazio("Gráfico de peso", "Registre pelo menos duas pesagens (em Evolução ou em “Editar meus dados”) "
+                                                "para ver a curva aqui."))
+        i = R.imc(S, cw)
+        st.caption(f"IMC {br(i)} kg/m² ({R.imc_categoria(i)}): indicador de triagem, não é diagnóstico.")
+
+    # última sessão
+    u = E.ultima_sessao(S)
+    html_md("<div class='fl-secao'>Última sessão</div>")
+    if u:
+        html_md(ui.grade([
+            (f"{fmt_d(u['data'])} · {'concluída' if u['status'] == 'concluida' else 'interrompida'}", u["nome"].split(" — ")[0], None, False),
+            ("Duração", f"{br(u['minutos'] or 0, 0)} min", f"{u['feitos']} de {u['total']} exercícios", False),
+            ("Cardio", f"{u['cardio']} min", f"volume {br(u['volume'] or 0, 0)} kg", False)]))
+    else:
+        html_md(ui.vazio("Nenhuma sessão ainda", "Quando você concluir o primeiro treino, o resumo aparece aqui."))
+
+    # bem-estar e dados
+    html_md("<div class='fl-secao'>Hoje</div>")
+    checkin()
     rv = R.recuperacao(S)
-    st.markdown(f"**Recuperação:** {rv['txt']} — {rv['detalhe']}")
-    historico_cargas()
+    st.caption(f"Recuperação: {rv['txt']} — {rv['detalhe']}")
+    editar_dados()
 
 
 def historico_cargas() -> None:
-    linhas = []
-    for ex_id in D.EXERCICIOS:
-        h = [x for x in R.historico_ex(S, ex_id) if x["max"] is not None]
-        if h:
-            linhas.append({"Exercício": R.nome_ex(ex_id), "Última (kg)": brx(h[-1]["max"]), "Data": fmt_d(h[-1]["date"]),
-                           "Anterior (kg)": brx(h[-2]["max"]) if len(h) > 1 else "—"})
-    st.markdown("### Histórico de cargas")
+    linhas = [{"Exercício": c["nome"], "Primeira (kg)": brx(c["primeira"]), "Última (kg)": brx(c["ultima"]),
+               "Variação": ("+" if c["variacao"] > 0 else "") + brx(c["variacao"]) + " kg", "Desde": fmt_d(c["data_primeira"]),
+               "Registros": c["registros"]} for c in E.comparacao_cargas(S)]
     if linhas:
         st.dataframe(pd.DataFrame(linhas), hide_index=True, use_container_width=True)
     else:
-        st.caption("As cargas aparecem aqui depois do primeiro treino registrado.")
+        html_md(ui.vazio("Sem cargas registradas", "As cargas aparecem aqui depois do primeiro treino com carga anotada."))
 
 
 def tentar_iniciar(wk: str) -> None:
@@ -512,6 +519,9 @@ def tentar_iniciar(wk: str) -> None:
 
 # ------------------------------------------------------------------ TREINOS
 def tela_treinos() -> None:
+    if st.session_state.get("resumo"):
+        tela_resumo(st.session_state.resumo)
+        return
     if R.alerta_vermelho(S):
         aviso_urgente()
     if S["active"]:
@@ -520,45 +530,33 @@ def tela_treinos() -> None:
     ws = R.inicio_semana(t)
     if "dia_sel" not in st.session_state:
         st.session_state.dia_sel = t
-    st.markdown(f"### Agenda da semana  \n<small>{fmt_d(ws)} a {fmt_d(R.add_dias(ws, 6))}</small>", unsafe_allow_html=True)
-    cols = st.columns(7)
-    for col, d in zip(cols, R.dias_da_semana(ws)):
+    cabecalho("Treinos", f"Semana de {fmt_d(ws)} a {fmt_d(R.add_dias(ws, 6))}")
+    # faixa de dias rolável; a chave inclui o dia escolhido para o app poder mudar a seleção sozinho
+    dias = R.dias_da_semana(ws)
+
+    def rotulo_dia(d):
         k = R.treino_do_dia(S, d)
-        marca = " ✓" if R.feito_em(S, d) else ""
-        if col.button(f"{D.DIAS_CURTOS[R.dia_js(d)]}\n{R.pd(d).day}\n{D.TREINOS[k]['curto']}{marca}", key="d_" + d,
-                      type="primary" if d == st.session_state.dia_sel else "secondary", use_container_width=True):
-            st.session_state.dia_sel = d
-            st.rerun()
+        return f"{D.DIAS_CURTOS[R.dia_js(d)]} {R.pd(d).day}\n{D.TREINOS[k]['curto']}{' ✓' if R.feito_em(S, d) else ''}"
+    sel = st.radio("Dia da semana", dias, index=dias.index(st.session_state.dia_sel) if st.session_state.dia_sel in dias else 0,
+                   format_func=rotulo_dia, horizontal=True, key="dia_" + st.session_state.dia_sel, label_visibility="collapsed")
+    if sel != st.session_state.dia_sel:
+        st.session_state.dia_sel = sel
+        st.rerun()
     sp = P.semana_do_programa(S)
     pw = sp["semana"]
     fi, fase = P.fase_da_semana(pw)
-    with st.container(border=True):
-        st.markdown(f"**Semana {pw} de {D.SEMANAS_PLANO} · Fase {fi + 1} — {fase['n']}**")
-        st.caption(f"Objetivo da semana: {P.objetivo_da_semana(pw)} · Esforço: {fase['rpe']}")
-        if sp["concluido"]:
-            st.success("Plano de 20 semanas concluído. Gere o relatório em Evolução e combine a próxima etapa com o profissional.")
-        elif sp["historico"]:
-            ult = sp["historico"][-1]
-            (st.caption if ult["aprovada"] else st.warning)(f"Semana anterior (semana {ult['semana']}): {ult['motivo']}")
-        with st.expander("Como a semana do plano avança"):
-            st.markdown("A semana só avança quando a anterior foi bem executada e bem recuperada:\n"
-                        "- pelo menos 60% dos treinos planejados concluídos;\n"
-                        "- nenhuma sessão interrompida por sintoma nem dor moderada ou forte;\n"
-                        "- nenhum sinal de alerta, inchaço ou dor forte no check-in;\n"
-                        "- nenhuma sessão com recuperação ruim.\n\n"
-                        "Se algo disso falhar, a mesma semana se repete. Terminar o calendário não basta.")
-        with st.expander("Ver o plano das 20 semanas"):
-            ver_plano(pw, ws)
     d = st.session_state.dia_sel
     wk = R.treino_do_dia(S, d)
     pl = P.plano_do_dia(S, d, pw)
-    ficha = (("Duração", f"≈ {pl['total']} min"), ("Exercícios", str(len(pl["itens"])))) if wk != "OFF" else ()
+    ficha = (("Duração", f"≈ {pl['total']} min"), ("Cardio", f"{minutos_cardio(pl)} min"),
+             ("Exercícios", str(len(pl["itens"])))) if wk != "OFF" else ()
     capa([it["id"] for it in pl["itens"]] or ["esteira_caminhada"],
-         f"{D.DIAS_SEMANA[R.dia_js(d)].upper()} · {fmt_d(d)}" + (" · HOJE" if d == t else ""), pl["nome"], pl["obj"], ficha)
+         f"{D.DIAS_SEMANA[R.dia_js(d)].upper()} · {fmt_d(d)}" + (" · HOJE" if d == t else ""), pl["nome"],
+         grupos_do_treino(pl) or pl["obj"], ficha)
     if wk != "OFF" and pl["etapas"]:
         st.caption(texto_etapas(pl))
     for x in pl["avisos"]:
-        st.caption("ℹ️ " + x)
+        st.caption(":material/info: " + x)
     if pl["bloqueados"]:
         st.warning("**Fora do plano por segurança:**  \n" + "  \n".join(f"{R.nome_ex(x)}: {m}" for x, m in pl["bloqueados"]))
     with st.container():
@@ -576,7 +574,8 @@ def tela_treinos() -> None:
             elif R.feito_em(S, t):
                 st.success("Treino de hoje concluído. Para recuperar bem, não acumule outro treino hoje.")
             else:
-                if wk != "OFF" and st.button("Iniciar este treino", type="primary"):
+                if wk != "OFF" and st.button("Iniciar este treino", type="primary", use_container_width=True,
+                                             key="acao_principal", icon=":material/play_arrow:"):
                     tentar_iniciar(wk)
                 opcoes = [""] + list(D.TREINOS)
                 atual = S["dayOverride"].get(t, "")
@@ -599,6 +598,24 @@ def tela_treinos() -> None:
         editar_treino(pl)
     for it in pl["itens"]:
         cartao_exercicio(it["id"], d == t, it)
+    html_md("<div class='fl-secao'>Plano de 20 semanas</div>")
+    with st.container(border=True):
+        html_md(f"<p class='fl-rotulo'>Semana {pw} de {D.SEMANAS_PLANO} · Fase {fi + 1} — {html.escape(fase['n'])}</p>")
+        st.caption(f"Objetivo da semana: {P.objetivo_da_semana(pw)} · Esforço: {fase['rpe']}")
+        if sp["concluido"]:
+            st.success("Plano de 20 semanas concluído. Gere o relatório em Evolução e combine a próxima etapa com o profissional.")
+        elif sp["historico"]:
+            ult = sp["historico"][-1]
+            (st.caption if ult["aprovada"] else st.warning)(f"Semana anterior (semana {ult['semana']}): {ult['motivo']}")
+        with st.expander("Como a semana do plano avança"):
+            st.markdown("A semana só avança quando a anterior foi bem executada e bem recuperada:\n"
+                        "- pelo menos 60% dos treinos planejados concluídos;\n"
+                        "- nenhuma sessão interrompida por sintoma nem dor moderada ou forte;\n"
+                        "- nenhum sinal de alerta, inchaço ou dor forte no check-in;\n"
+                        "- nenhuma sessão com recuperação ruim.\n\n"
+                        "Se algo disso falhar, a mesma semana se repete. Terminar o calendário não basta.")
+        with st.expander("Ver o plano das 20 semanas"):
+            ver_plano(pw, ws)
 
 
 def ver_plano(pw: int, ws: str) -> None:
@@ -627,7 +644,7 @@ def editar_treino(pl: dict) -> None:
     chave = f"{pl['semana']}|{pl['wk']}"
     forca = [it for it in pl["itens"] if "duracao" not in it]
     cardio = next((it["id"] for it in pl["itens"] if "duracao" in it and D.EXERCICIOS[it["id"]].get("cardio")), None)
-    with st.expander("✏️ Editar exercícios deste treino" + (" (personalizado)" if pl["personalizado"] else "")):
+    with st.expander(":material/edit: Editar exercícios deste treino" + (" (personalizado)" if pl["personalizado"] else "")):
         opcoes = [x for x, e in D.EXERCICIOS.items() if e["tipo"] == "carga" and e["grupo"] != "Recuperação"]
         with st.form("ed_" + chave):
             sel = st.multiselect("Exercícios de musculação, na ordem do treino", opcoes, default=[it["id"] for it in forca],
@@ -671,249 +688,424 @@ def editar_treino(pl: dict) -> None:
             st.rerun()
 
 
+def cardio_feito(a: dict) -> float:
+    return sum(num(x.get("min")) for e in a["ex"] if D.EXERCICIOS.get(e["id"], {}).get("cardio")
+               for x in e["sets"] if x.get("done") and ok(num(x.get("min"))))
+
+
 def tela_sessao() -> None:
     a = S["active"]
     W = D.TREINOS[a["workout"]]
+    n = len(a["ex"])
     feitos = sum(1 for e in a["ex"] if e.get("done"))
+    atual = next((i for i, e in enumerate(a["ex"]) if not e.get("done")), None)
     semana = a.get("semana") or P.semana_do_programa(S)["semana"]
     fi, fase = P.fase_da_semana(semana)
+    cabecalho(W["nome"].split(" — ")[0], f"Em andamento · semana {semana} de {D.SEMANAS_PLANO} · fase {fi + 1}")
     with st.container(border=True):
-        st.caption(f"SESSÃO EM ANDAMENTO · {D.DIAS_SEMANA[R.dia_js(a['date'])].upper()}, {fmt_d(a['date'])} · "
-                   f"SEMANA {semana} DE {D.SEMANAS_PLANO} · FASE {fi + 1}")
-        st.subheader(W["nome"])
-        st.progress(feitos / len(a["ex"]) if a["ex"] else 0.0, text=f"{feitos}/{len(a['ex'])} exercícios")
-        c = st.columns(2)
-        c[0].metric("Volume", f"{br(R.volume(a), 0)} kg")
-        cmin = sum(num(x.get("min")) for e in a["ex"] if D.EXERCICIOS.get(e["id"], {}).get("cardio")
-                   for x in e["sets"] if x.get("done") and ok(num(x.get("min"))))
-        c[1].metric("Cardio feito", f"{br(cmin, 0)} min")
-        st.caption(f"Marque a série ao terminar: repetições e a última carga usada são preenchidas sozinhas e o descanso começa. "
-                   f"Esforço recomendado nesta fase: {fase['rpe']}, sem chegar à falha.")
-    cronometro_sessao(a["startedAt"], int(a.get("planoMin") or 0))
+        cronometro_sessao(a["startedAt"], int(a.get("planoMin") or 0))
+        st.progress(feitos / n if n else 0.0, text=f"{feitos} de {n} exercícios")
+        plano_cardio = (a.get("etapas") or {}).get("Cardio")
+        html_md(ui.grade([("Volume", f"{br(R.volume(a), 0)} kg", "carga × repetições", False),
+                          ("Cardio", f"{br(cardio_feito(a), 0)} min", f"de {plano_cardio} min" if plano_cardio else None, False),
+                          ("Esforço-alvo", fase["rpe"].replace(" de 10", ""), "de 10, sem falha", False)]))
     if st.session_state.get("descanso_ate", 0) > time.time() * 1000:
-        cronometro(st.session_state.descanso_ate)
+        cronometro(st.session_state.descanso_ate, st.session_state.get("descanso_total", 0),
+                   st.session_state.get("descanso_proximo", ""))
     if a["workout"] not in ("REC", "OFF"):
         etapas = a.get("etapas") or {}
-        st.info(f"**Aquecimento ({etapas.get('Aquecimento', 10)} min):** 5 minutos de esteira ou bicicleta em ritmo leve e 1 série leve "
-                "de 10 a 12 repetições do primeiro exercício. Ordem do treino: músculos grandes antes dos pequenos e exercícios "
-                f"multiarticulares antes dos isolados. **Volta à calma ({etapas.get('Volta à calma', 5)} min):** cardio bem leve e "
-                "respiração no final.")
+        with st.expander(f"Aquecimento ({etapas.get('Aquecimento', 10)} min) e volta à calma ({etapas.get('Volta à calma', 5)} min)"):
+            st.markdown("**Aquecimento:** 5 minutos de esteira ou bicicleta em ritmo leve e 1 série leve de 10 a 12 repetições "
+                        "do primeiro exercício.  \n**Ordem:** músculos grandes antes dos pequenos, multiarticulares antes dos isolados.  \n"
+                        "**Volta à calma:** cardio bem leve e respiração no final.")
     for i, se in enumerate(a["ex"]):
-        exercicio_sessao(i, se)
-    st.divider()
+        exercicio_sessao(i, se, i == atual)
+    html_md("<div style='height:8px'></div>")
     if st.session_state.get("finalizar"):
-        with st.form("fim"):
-            st.markdown("**Como você se sentiu ao terminar?**")
-            sens = st.radio("Sensação geral", ["bem", "cansado", "exausto", "dor"], index=None, horizontal=True,
-                            format_func={"bem": "Bem", "cansado": "Cansado, mas bem", "exausto": "Muito cansado", "dor": "Com dor"}.get)
-            mins = st.number_input("Duração (minutos)", 1, 240, max(1, min(180, round((time.time() * 1000 - a["startedAt"]) / 60000))))
-            rpe_s = st.slider("Esforço da sessão inteira (0 = repouso, 10 = máximo)", 0, 10, 6)
-            c1, c2 = st.columns(2)
-            fad = c1.select_slider("Fadiga ao terminar (1 = descansado, 5 = exausto)", [1, 2, 3, 4, 5], value=3)
-            recup = c2.radio("Como está a recuperação dos últimos treinos?", ["boa", "regular", "ruim"], horizontal=True,
-                             format_func=str.capitalize)
-            obs = st.text_area("Observações")
-            c1, c2 = st.columns(2)
-            if c1.form_submit_button("Salvar sessão", type="primary"):
-                if not sens:
-                    st.error("Escolha como você se sentiu.")
-                    return
-                rec = R.finalizar_sessao(S, sens, mins, obs, rpe_sessao=rpe_s, fadiga=fad, recuperacao=recup)
-                st.session_state.finalizar = False
-                st.session_state.descanso_ate = 0
-                salvar()
-                pr = rec.pop("_recordes")
-                if sens == "dor":
-                    st.session_state.aviso = ("alerta", "Sessão salva com registro de dor", "Procure avaliação antes do próximo treino que possa agravar a dor.")
-                else:
-                    st.session_state.aviso = ("ok", "Sessão salva",
-                        f"{sum(1 for e in rec['ex'] if e.get('done'))} de {len(rec['ex'])} exercícios ({br(rec['pct'], 0)}%) · {rec['minutes']} min · volume de {br(rec['volume'], 0)} kg · ≈ {br(rec['kcal'], 0)} kcal (estimativa)."
-                        + (" Novo recorde de carga: " + "; ".join(pr) + "." if pr else ""))
-                st.rerun()
-            if c2.form_submit_button("Voltar"):
-                st.session_state.finalizar = False
-                st.rerun()
+        form_finalizar(a)
     elif st.session_state.get("sintoma"):
-        with st.form("sint"):
-            st.markdown("**Qual sintoma?**")
-            marc = [k for k, lbl in [("joelho", "Dor em articulação que piora com o exercício"), ("inchaco", "Inchaço em articulação"),
-                                     ("apoio", "Dificuldade para apoiar a perna"), ("peito", "Dor ou aperto no peito"),
-                                     ("ar", "Falta de ar desproporcional ao esforço"), ("tontura", "Tontura ou mal-estar"),
-                                     ("outro", "Outra dor ou desconforto")] if st.checkbox(lbl, key="s_" + k)]
-            c1, c2 = st.columns(2)
-            if c1.form_submit_button("Interromper sessão", type="primary"):
-                if not marc:
-                    st.error("Marque pelo menos um sintoma.")
-                    return
-                urg = R.interromper_sessao(S, marc)
-                st.session_state.sintoma = False
-                salvar()
-                st.session_state.aviso = (("erro", "PARE — procure atendimento médico",
-                                           "Dor ou aperto no peito, falta de ar desproporcional ou incapacidade de apoiar a perna exigem avaliação médica.")
-                                          if urg else ("alerta", "Sessão interrompida", "Descanse e não retome hoje. O registro foi salvo no histórico."))
-                st.rerun()
-            if c2.form_submit_button("Voltar"):
-                st.session_state.sintoma = False
-                st.rerun()
+        form_sintoma()
     else:
-        c1, c2, c3 = st.columns(3)
-        if c1.button("Finalizar sessão", type="primary", use_container_width=True):
+        if st.button("Finalizar treino", type="primary", use_container_width=True, key="acao_principal",
+                     icon=":material/flag:"):
             st.session_state.finalizar = True
             st.rerun()
-        if c2.button("Senti um sintoma", use_container_width=True):
+        c1, c2 = st.columns(2)
+        if c1.button("Senti um sintoma", use_container_width=True, icon=":material/healing:"):
             st.session_state.sintoma = True
             st.rerun()
         if st.session_state.get("conf_desc"):
-            if c3.button("Confirmar descarte", use_container_width=True):
+            if c2.button("Confirmar descarte", use_container_width=True):
                 S["active"] = None
                 st.session_state.conf_desc = False
                 salvar()
                 st.session_state.aviso = ("info", "Sessão descartada", "Nada foi registrado.")
                 st.rerun()
-        elif c3.button("Descartar", use_container_width=True):
+        elif c2.button("Descartar", use_container_width=True, icon=":material/delete:"):
             st.session_state.conf_desc = True
             st.rerun()
 
 
-def exercicio_sessao(i: int, se: dict) -> None:
+def form_finalizar(a: dict) -> None:
+    with st.form("fim"):
+        st.markdown("#### Como foi o treino?")
+        sens = st.radio("Sensação geral", ["bem", "cansado", "exausto", "dor"], index=None, horizontal=True,
+                        format_func={"bem": "Bem", "cansado": "Cansado, mas bem", "exausto": "Muito cansado", "dor": "Com dor"}.get)
+        mins = st.number_input("Duração (minutos)", 1, 240, max(1, min(180, round((time.time() * 1000 - a["startedAt"]) / 60000))))
+        rpe_s = st.slider("Esforço da sessão inteira (0 = repouso, 10 = máximo)", 0, 10, 6)
+        fad = st.select_slider("Fadiga ao terminar (1 = descansado, 5 = exausto)", [1, 2, 3, 4, 5], value=3)
+        recup = st.radio("Como está a recuperação dos últimos treinos?", ["boa", "regular", "ruim"], horizontal=True,
+                         format_func=str.capitalize)
+        obs = st.text_area("Observações (opcional)")
+        salvar_bt = st.form_submit_button("Salvar treino", type="primary", use_container_width=True)
+        voltar = st.form_submit_button("Voltar ao treino", use_container_width=True)
+    if salvar_bt:
+        if not sens:
+            st.error("Escolha como você se sentiu para salvar.")
+            return
+        cardio = cardio_feito(a)
+        rec = R.finalizar_sessao(S, sens, mins, obs, rpe_sessao=rpe_s, fadiga=fad, recuperacao=recup)
+        st.session_state.finalizar = False
+        st.session_state.descanso_ate = 0
+        salvar()
+        pr = rec.pop("_recordes")
+        st.session_state.resumo = {"nome": D.TREINOS[rec["workout"]]["nome"], "feitos": sum(1 for e in rec["ex"] if e.get("done")),
+                                   "total": len(rec["ex"]), "pct": rec["pct"], "minutos": rec["minutes"], "volume": rec["volume"],
+                                   "kcal": rec["kcal"], "cardio": cardio, "recordes": pr, "dor": sens == "dor"}
+        st.rerun()
+    if voltar:
+        st.session_state.finalizar = False
+        st.rerun()
+
+
+def form_sintoma() -> None:
+    with st.form("sint"):
+        st.markdown("#### Qual sintoma?")
+        marc = [k for k, lbl in [("joelho", "Dor em articulação que piora com o exercício"), ("inchaco", "Inchaço em articulação"),
+                                 ("apoio", "Dificuldade para apoiar a perna"), ("peito", "Dor ou aperto no peito"),
+                                 ("ar", "Falta de ar desproporcional ao esforço"), ("tontura", "Tontura ou mal-estar"),
+                                 ("outro", "Outra dor ou desconforto")] if st.checkbox(lbl, key="s_" + k)]
+        parar = st.form_submit_button("Interromper sessão", type="primary", use_container_width=True)
+        voltar = st.form_submit_button("Voltar ao treino", use_container_width=True)
+    if parar:
+        if not marc:
+            st.error("Marque pelo menos um sintoma.")
+            return
+        urg = R.interromper_sessao(S, marc)
+        st.session_state.sintoma = False
+        salvar()
+        st.session_state.aviso = (("erro", "PARE — procure atendimento médico",
+                                   "Dor ou aperto no peito, falta de ar desproporcional ou incapacidade de apoiar a perna exigem avaliação médica.")
+                                  if urg else ("alerta", "Sessão interrompida", "Descanse e não retome hoje. O registro foi salvo no histórico."))
+        st.rerun()
+    if voltar:
+        st.session_state.sintoma = False
+        st.rerun()
+
+
+def tela_resumo(r: dict) -> None:
+    """Tela de conclusão com o resumo do que foi registrado."""
+    cabecalho("Resumo", data_extensa(t))
+    with st.container(border=True):
+        html_md(ui.fim_de_sessao("Treino concluído", f"{r['nome']} · sessão salva no histórico"))
+        html_md(ui.grade([("Duração", f"{r['minutos']} min", None, False),
+                          ("Exercícios", f"{r['feitos']}/{r['total']}", f"{br(r['pct'], 0)}% concluído", False),
+                          ("Cardio", f"{br(r['cardio'], 0)} min", None, False),
+                          ("Volume", f"{br(r['volume'], 0)} kg", "carga × repetições", False),
+                          ("Gasto", f"≈ {br(r['kcal'], 0)}", "kcal (estimativa)", False),
+                          ("Recordes", str(len(r["recordes"])), "de carga", bool(r["recordes"]))]))
+        if r["recordes"]:
+            st.success("Novo recorde de carga: " + "; ".join(r["recordes"]) + ".")
+        if r["dor"]:
+            st.warning("Sessão salva com registro de dor: procure avaliação antes do próximo treino que possa agravar a dor.")
+        st.caption("A semana do plano avança quando ela termina com pelo menos 60% dos treinos e sem sinais de alerta.")
+        if st.button("Concluir", type="primary", use_container_width=True, key="acao_principal"):
+            st.session_state.pop("resumo", None)
+            st.session_state._ir = "Início"
+            st.rerun()
+
+
+def concluir_serie(i: int, j: int, k: str, e: dict, se: dict) -> None:
+    desc = R.marcar_serie(S, i, j, True)
+    st.session_state.descanso_ate = time.time() * 1000 + desc * 1000 if desc else 0
+    st.session_state.descanso_total = desc
+    restantes = [x for x in se["sets"] if not x["done"]]
+    st.session_state.descanso_proximo = (f"Próximo: série {j + 2} de {e['nome']}" if restantes else "")
+    salvar()
+    if se.get("done"):
+        st.toast(f"{e['nome']} concluído", icon=":material/check_circle:")
+    else:
+        st.toast(f"Série {j + 1} concluída · descanso de {desc} s", icon=":material/timer:")
+    st.rerun()
+
+
+def exercicio_sessao(i: int, se: dict, aberto: bool) -> None:
     e = R.ex_sessao(S, se)
     sid = S["active"]["id"]
-    with st.container(border=True):
-        mostrar_fotos(se["id"])
-        st.markdown(f"#### {e['nome']} {'✅' if se.get('done') else ''}")
-        st.markdown(f"<span class='fl-presc'>{prescricao(e)}</span>", unsafe_allow_html=True)
-        st.markdown(f"<div class='fl-rec'>{R.recomendacao(S, se['id'])}</div>", unsafe_allow_html=True)
-        for j, sset in enumerate(se["sets"]):
-            k = f"{sid}_{i}_{j}"
-            if e["tipo"] == "tempo":
-                c1, c2 = st.columns([1, 2])
-                feito = c1.checkbox("Feito", sset["done"], key="c" + k)
-                mn = c2.text_input("Minutos", sset.get("min", ""), key="m" + k, placeholder=f"meta {e['duracao']}", label_visibility="collapsed")
-                if mn != sset.get("min", ""):
-                    v = num(mn)
-                    if mn.strip() and (not ok(v) or not 0 <= v <= 240):
-                        st.error("Minutos inválidos.")
-                    else:
-                        sset["min"] = mn.strip()
-                        salvar()
+    feitas = sum(1 for x in se["sets"] if x["done"])
+    resumo = f"{e['duracao']} min" if e["tipo"] == "tempo" else f"{feitas}/{len(se['sets'])} séries"
+    if se.get("done"):
+        rotulo = f":material/check_circle: {e['nome']} · concluído"
+    elif aberto:
+        rotulo = f":material/play_circle: Agora: {e['nome']} · {resumo}"
+    else:
+        rotulo = f"{e['nome']} · {resumo}"
+    with st.expander(rotulo, expanded=aberto):
+        html_md(prescricao_html(e))
+        if not se.get("done"):
+            html_md(f"<div class='fl-rec'>{html.escape(R.recomendacao(S, se['id']))}</div>")
+        if e["tipo"] == "tempo":
+            bloco_cardio(i, se, e, sid)
+        else:
+            bloco_series(i, se, e, sid)
+        detalhes_exercicio(i, se, e, sid)
+
+
+def bloco_series(i: int, se: dict, e: dict, sid: str) -> None:
+    proxima = next((j for j, x in enumerate(se["sets"]) if not x["done"]), None)
+    ult = R.ultima_carga(S, se["id"])
+    for j, sset in enumerate(se["sets"]):
+        k = f"{sid}_{i}_{j}"
+        if sset["done"]:
+            carga = f"{sset.get('load')} kg × " if sset.get("load") and not e.get("semCarga") else ""
+            html_md(f"<div class='fl-serie-ok'><i>✓</i>Série {j + 1}<span>{html.escape(carga + str(sset.get('reps') or ''))}"
+                    f"{' reps' if sset.get('reps') else ''}</span></div>")
+            html_md("<div style='height:6px'></div>")
+        elif j == proxima:
+            anterior = se["sets"][j - 1].get("load") if j > 0 else ""
+            c1, c2 = st.columns(2)
+            ld = ""
+            if not e.get("semCarga"):
+                ld = c1.text_input(f"Carga da série {j + 1} (kg)", sset.get("load") or anterior or "", key="l" + k,
+                                   placeholder=f"última: {ult}" if ult else "kg")
             else:
-                c1, c2, c3 = st.columns([1.2, 1, 1])
-                feito = c1.checkbox(f"Série {j + 1}", sset["done"], key="c" + k)
-                if not e.get("semCarga"):
-                    ult = R.ultima_carga(S, se["id"])
-                    ld = c2.text_input("kg", sset.get("load", ""), key="l" + k, placeholder="kg" + (f" (últ. {ult})" if ult else ""), label_visibility="collapsed")
-                    if ld != sset.get("load", ""):
-                        v = num(ld)
-                        if ld.strip() and (not ok(v) or not 0 <= v <= 500):
-                            st.error("Carga inválida: use apenas números.")
-                        else:
-                            sset["load"] = ld.strip()
-                            salvar()
-                else:
-                    c2.caption("sem carga")
-                rp = c3.text_input("reps", sset.get("reps", ""), key="r" + k, placeholder="reps", label_visibility="collapsed")
-                if rp != sset.get("reps", ""):
-                    v = num(rp)
-                    if rp.strip() and (not ok(v) or not 0 <= v <= 200):
-                        st.error("Repetições inválidas.")
-                    else:
-                        sset["reps"] = rp.strip()
-                        salvar()
-            if feito != sset["done"]:
-                desc = R.marcar_serie(S, i, j, feito)
-                for pre in ("l", "r", "m"):
-                    st.session_state.pop(pre + k, None)
-                st.session_state.descanso_ate = time.time() * 1000 + desc * 1000 if desc else 0
-                salvar()
-                st.rerun()
-        if e.get("cardio") and not se.get("done"):
-            semana = S["active"].get("semana") or 1
-            mods = [c for c in D.CARDIO_TODOS if c == se["id"] or not P.motivo_bloqueio(S, c, semana)]
-            if se["id"] in mods and len(mods) > 1:
-                nova = st.selectbox("Modalidade de cardio", mods, index=mods.index(se["id"]), format_func=R.nome_ex,
-                                    key=f"mod{sid}_{i}")
-                if nova != se["id"]:
-                    entrada = R.nova_entrada(S, nova, se.get("presc"))
-                    entrada["sets"][0]["min"] = se["sets"][0].get("min", "")
-                    S["active"]["ex"][i] = entrada
-                    st.session_state.pop(f"mod{sid}_{i}", None)
-                    salvar()
-                    st.rerun()
-        if e.get("cardio"):
-            ops = D.INTENSIDADES[e["cardio"]]
-            vals = [o[0] for o in ops]
-            esc = st.selectbox("Intensidade (usada na estimativa de calorias)", vals, index=vals.index(se.get("met")) if se.get("met") in vals else 0,
-                               format_func=dict(ops).get, key=f"met{sid}_{i}")
-            if esc != se.get("met"):
-                se["met"] = esc
-                salvar()
-        alts = [x for x in D.ALTERNATIVAS.get(se["id"], []) if x in D.EXERCICIOS and R.status_ex(S, x)[0]]
-        if alts and not any(x["done"] for x in se["sets"]):
-            tr = st.selectbox("Aparelho ocupado? Trocar por", [""] + alts, format_func=lambda x: "Manter este exercício" if not x else R.nome_ex(x), key=f"sw{sid}_{i}")
-            if tr:
-                S["active"]["ex"][i] = R.nova_entrada(S, tr, se.get("presc"))
-                st.session_state.pop(f"sw{sid}_{i}", None)
-                salvar()
-                st.rerun()
-        c1, c2 = st.columns(2)
-        rpe_ops = [""] + [str(n) for n in range(1, 11)]
-        rpe = c1.selectbox("Esforço percebido (1–10)", rpe_ops, index=rpe_ops.index(str(se.get("rpe") or "")), key=f"rpe{sid}_{i}")
-        dor_ops = ["nenhum", "leve", "moderado", "forte"]
-        dor = c2.selectbox("Dor ou desconforto", dor_ops, index=dor_ops.index(se.get("painLevel") or "nenhum"), format_func=str.capitalize, key=f"pl{sid}_{i}")
-        if rpe != (se.get("rpe") or "") or dor != se.get("painLevel"):
-            se["rpe"], se["painLevel"] = rpe, dor
+                c1.caption("Sem carga")
+            rp = c2.text_input(f"Repetições da série {j + 1}", sset.get("reps") or R.reps_alvo(e), key="r" + k)
+            if st.button(f"Concluir série {j + 1}", type="primary", use_container_width=True, key=f"serie_ok_{k}",
+                         icon=":material/check:"):
+                vl, vr = num(ld), num(rp)
+                if ld.strip() and (not ok(vl) or not 0 <= vl <= 500):
+                    st.error("Carga inválida: use apenas números (ex.: 42,5).")
+                    return
+                if rp.strip() and (not ok(vr) or not 0 <= vr <= 200):
+                    st.error("Repetições inválidas.")
+                    return
+                sset["load"], sset["reps"] = ld.strip(), rp.strip()
+                concluir_serie(i, j, k, e, se)
+        else:
+            st.caption(f"Série {j + 1} · {e['reps']} repetições")
+    if feitas := [j for j, x in enumerate(se["sets"]) if x["done"]]:
+        if st.button("Desfazer última série", key=f"desfazer_{sid}_{i}", icon=":material/undo:"):
+            R.marcar_serie(S, i, feitas[-1], False)
+            st.session_state.descanso_ate = 0
             salvar()
-        if dor in ("moderado", "forte"):
-            st.error("**Pare este exercício.** Com dor moderada ou forte, interrompa. Se a dor for em uma articulação, no peito ou vier com inchaço, use “Senti um sintoma”.")
+            st.rerun()
+
+
+def bloco_cardio(i: int, se: dict, e: dict, sid: str) -> None:
+    sset = se["sets"][0]
+    k = f"{sid}_{i}_0"
+    if sset["done"]:
+        html_md(f"<div class='fl-serie-ok'><i>✓</i>{html.escape(e['nome'])}<span>{html.escape(str(sset.get('min') or e['duracao']))} min</span></div>")
+        if st.button("Desfazer", key=f"desfazer_{sid}_{i}", icon=":material/undo:"):
+            R.marcar_serie(S, i, 0, False)
+            salvar()
+            st.rerun()
+        return
+    if e.get("cardio"):
+        semana = S["active"].get("semana") or 1
+        mods = [c for c in D.CARDIO_TODOS if c == se["id"] or not P.motivo_bloqueio(S, c, semana)]
+        if se["id"] in mods and len(mods) > 1:
+            nova = st.selectbox("Modalidade de cardio", mods, index=mods.index(se["id"]), format_func=R.nome_ex, key=f"mod{sid}_{i}")
+            if nova != se["id"]:
+                entrada = R.nova_entrada(S, nova, se.get("presc"))
+                entrada["sets"][0]["min"] = sset.get("min", "")
+                S["active"]["ex"][i] = entrada
+                st.session_state.pop(f"mod{sid}_{i}", None)
+                salvar()
+                st.rerun()
+        ops = D.INTENSIDADES[e["cardio"]]
+        vals = [o[0] for o in ops]
+        esc = st.selectbox("Intensidade (usada na estimativa de calorias)", vals,
+                           index=vals.index(se.get("met")) if se.get("met") in vals else 0, format_func=dict(ops).get, key=f"met{sid}_{i}")
+        if esc != se.get("met"):
+            se["met"] = esc
+            salvar()
+    mn = st.text_input("Minutos feitos", sset.get("min") or str(e["duracao"]), key="m" + k)
+    if st.button(f"Concluir {'cardio' if e.get('cardio') else 'exercício'}", type="primary", use_container_width=True,
+                 key=f"serie_ok_{k}", icon=":material/check:"):
+        v = num(mn)
+        if mn.strip() and (not ok(v) or not 0 <= v <= 240):
+            st.error("Minutos inválidos: use um número entre 0 e 240.")
+            return
+        sset["min"] = mn.strip()
+        concluir_serie(i, 0, k, e, se)
+
+
+def detalhes_exercicio(i: int, se: dict, e: dict, sid: str) -> None:
+    alts = [x for x in D.ALTERNATIVAS.get(se["id"], []) if x in D.EXERCICIOS and R.status_ex(S, x)[0]]
+    if alts and not any(x["done"] for x in se["sets"]) and not e.get("cardio"):
+        tr = st.selectbox("Aparelho ocupado? Trocar por", [""] + alts,
+                          format_func=lambda x: "Manter este exercício" if not x else R.nome_ex(x), key=f"sw{sid}_{i}")
+        if tr:
+            S["active"]["ex"][i] = R.nova_entrada(S, tr, se.get("presc"))
+            st.session_state.pop(f"sw{sid}_{i}", None)
+            salvar()
+            st.rerun()
+    c1, c2 = st.columns(2)
+    rpe_ops = [""] + [str(n) for n in range(1, 11)]
+    rpe = c1.selectbox("Esforço percebido (1–10)", rpe_ops, index=rpe_ops.index(str(se.get("rpe") or "")), key=f"rpe{sid}_{i}",
+                       format_func=lambda x: x or "—")
+    dor_ops = ["nenhum", "leve", "moderado", "forte"]
+    dor = c2.selectbox("Dor ou desconforto", dor_ops, index=dor_ops.index(se.get("painLevel") or "nenhum"),
+                       format_func=str.capitalize, key=f"pl{sid}_{i}")
+    if rpe != (se.get("rpe") or "") or dor != se.get("painLevel"):
+        se["rpe"], se["painLevel"] = rpe, dor
+        salvar()
+    if dor in ("moderado", "forte"):
+        st.error("**Pare este exercício.** Com dor moderada ou forte, interrompa. Se a dor for em uma articulação, no peito "
+                 "ou vier com inchaço, use “Senti um sintoma”.")
+    if dor != "nenhum" or se.get("pain"):
         txt = st.text_input("Onde e como foi o desconforto (opcional)", se.get("pain", ""), key=f"pt{sid}_{i}")
         if txt != se.get("pain", ""):
             se["pain"] = txt
             salvar()
-        conc = st.checkbox("Exercício concluído", se.get("done", False), key=f"exd{sid}_{i}")
-        if conc != se.get("done"):
-            se["done"] = conc
-            salvar()
-            st.rerun()
-        with st.expander("Como executar"):
-            for n, passo in enumerate(e["instrucoes"], 1):
-                st.markdown(f"{n}. {passo}")
+    c1, c2 = st.columns(2)
+    with c1.popover("Como executar", icon=":material/info:", use_container_width=True):
+        mostrar_fotos(se["id"])
+        for n_, passo in enumerate(e["instrucoes"], 1):
+            st.markdown(f"{n_}. {passo}")
         for al in e["alertas"]:
-            st.caption("⚠️ " + al)
+            st.caption(":material/warning: " + al)
+    if not se.get("done") and c2.button("Marcar como concluído", key=f"exd{sid}_{i}", use_container_width=True,
+                                        help="Para quando você fez o exercício sem registrar todas as séries"):
+        se["done"] = True
+        salvar()
+        st.toast(f"{e['nome']} concluído", icon=":material/check_circle:")
+        st.rerun()
 
 
 # ------------------------------------------------------------------ EVOLUÇÃO
+# configuração comum dos gráficos: fundo transparente, eixos discretos e fonte do sistema
+VEGA_CONFIG = {
+    "background": None, "view": {"stroke": None},
+    "font": "-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif",
+    "axis": {"labelColor": "#a1a1a6", "titleColor": "#a1a1a6", "gridColor": "rgba(255,255,255,0.07)",
+             "domainColor": "rgba(255,255,255,0.12)", "tickColor": "rgba(255,255,255,0.12)", "labelFontSize": 11,
+             "titleFontSize": 11, "titleFontWeight": 500},
+    "legend": {"labelColor": "#a1a1a6", "titleColor": "#a1a1a6", "orient": "top", "labelFontSize": 11},
+}
+
+
+def grafico(df: pd.DataFrame, spec: dict) -> None:
+    # especificação Vega-Lite direta: não depende do pacote altair, que não importa no Python 3.14
+    st.vega_lite_chart(df, {**spec, "config": VEGA_CONFIG}, use_container_width=True, theme=None)
+
+
 def grafico_peso(modo: str, altura: int = 240) -> None:
     dados = R.serie_peso(S, modo)
     if len(dados) < 2:
-        st.caption("Registre pelo menos duas pesagens para ver o gráfico de evolução do peso.")
+        html_md(ui.vazio("Gráfico de peso", "Registre pelo menos duas pesagens para ver a evolução."))
         return
     df = pd.DataFrame([{"ordem": n, "Data": l, "Peso (kg)": round(v, 1)} for n, (l, v) in enumerate(dados)])
     lo, hi = float(df["Peso (kg)"].min()), float(df["Peso (kg)"].max())
-    # especificação Vega-Lite direta: não depende do pacote altair, que não importa no Python 3.14
-    spec = {
-        "height": altura,
-        "mark": {"type": "line", "color": "#EF233C", "strokeWidth": 3, "point": {"color": "#FF5266", "size": 70}},
-        "encoding": {
-            "x": {"field": "Data", "type": "nominal", "sort": list(df["Data"]), "title": None},
-            "y": {"field": "Peso (kg)", "type": "quantitative", "scale": {"domain": [lo - 1.5, hi + 1.5]}},
-            "tooltip": [{"field": "Data", "type": "nominal"}, {"field": "Peso (kg)", "type": "quantitative"}],
-        },
-    }
-    st.vega_lite_chart(df, spec, use_container_width=True)
+    meta = float(S["profile"]["pesoMeta"])
+    mostra_meta = lo - meta <= 6  # a linha da meta só entra quando não achata a curva
+    dominio = [min(lo, meta) - 1 if mostra_meta else lo - 1.5, hi + 1.5]
+    camadas = [
+        {"mark": {"type": "area", "color": {"x1": 1, "y1": 1, "x2": 1, "y2": 0, "gradient": "linear",
+                                            "stops": [{"offset": 0, "color": "rgba(240,54,74,0)"},
+                                                      {"offset": 1, "color": "rgba(240,54,74,0.22)"}]},
+                  "interpolate": "monotone"},
+         "encoding": {"y": {"field": "Peso (kg)", "type": "quantitative", "scale": {"domain": dominio}, "title": None}}},
+        {"mark": {"type": "line", "color": "#f0364a", "strokeWidth": 2.5, "interpolate": "monotone",
+                  "point": {"color": "#f0364a", "size": 36, "filled": True}},
+         "encoding": {"y": {"field": "Peso (kg)", "type": "quantitative", "scale": {"domain": dominio}, "title": None},
+                      "tooltip": [{"field": "Data", "type": "nominal"}, {"field": "Peso (kg)", "type": "quantitative"}]}},
+    ]
+    if mostra_meta:
+        camadas.append({"mark": {"type": "rule", "color": "#a1a1a6", "strokeDash": [4, 4]}, "encoding": {"y": {"datum": meta}}})
+    grafico(df, {"height": altura, "encoding": {"x": {"field": "Data", "type": "nominal", "sort": list(df["Data"]), "title": None,
+                                                      "axis": {"labelAngle": 0, "labelOverlap": True}}},
+                 "layer": camadas})
+    if not mostra_meta:
+        st.caption(f"Meta: {br(meta)} kg (fora da escala do gráfico para não achatar a curva).")
+
+
+def grafico_barras(linhas: list[dict], y: str, titulo_y: str, ref: float | None = None, y2: str | None = None,
+                   altura: int = 200) -> None:
+    """Barras por semana; y2 desenha o planejado como barra de fundo; ref desenha uma linha de referência."""
+    df = pd.DataFrame(linhas)
+    camadas = []
+    if y2:
+        camadas.append({"mark": {"type": "bar", "color": "#2a2a2e", "cornerRadiusTopLeft": 5, "cornerRadiusTopRight": 5},
+                        "encoding": {"y": {"field": y2, "type": "quantitative", "title": titulo_y}}})
+    camadas.append({"mark": {"type": "bar", "color": "#f0364a", "cornerRadiusTopLeft": 5, "cornerRadiusTopRight": 5,
+                             "width": {"band": 0.55}},
+                    "encoding": {"y": {"field": y, "type": "quantitative", "title": titulo_y},
+                                 "tooltip": [{"field": "Semana", "type": "nominal"}, {"field": y, "type": "quantitative"}]
+                                 + ([{"field": y2, "type": "quantitative"}] if y2 else [])}})
+    if ref:
+        camadas.append({"mark": {"type": "rule", "color": "#a1a1a6", "strokeDash": [4, 4]}, "encoding": {"y": {"datum": ref}}})
+    grafico(df, {"height": altura, "encoding": {"x": {"field": "Semana", "type": "nominal", "sort": list(df["Semana"]),
+                                                      "title": None, "axis": {"labelAngle": 0}}},
+                 "layer": camadas})
 
 
 def tela_evolucao() -> None:
+    cabecalho("Evolução", "Seus registros, sem estimativas inventadas")
+    aba_plano, aba_peso, aba_treinos, aba_rel = st.tabs(["Plano", "Peso", "Treinos", "Relatório"])
+    with aba_plano:
+        evolucao_plano()
+    with aba_peso:
+        evolucao_peso()
+    with aba_treinos:
+        evolucao_treinos()
+    with aba_rel:
+        evolucao_relatorio()
+
+
+def evolucao_plano() -> None:
+    estados, atual = E.estados_20(S)
+    fi, fase = P.fase_da_semana(atual)
+    cons = E.consistencia(S)
+    with st.container(border=True):
+        html_md(f"<p class='fl-rotulo'>Linha do tempo · semana {atual} de {D.SEMANAS_PLANO}</p>")
+        html_md(ui.linha_do_tempo(estados, [(f["n"], *f["semanas"]) for f in D.FASES_20], fi))
+    html_md(ui.grade([
+        ("Semanas concluídas", f"{cons['aprovadas']}/{D.SEMANAS_PLANO}", None, True),
+        ("Sequência atual", str(cons["sequencia"]), "semanas seguidas", False),
+        ("Aproveitamento", f"{br(cons['taxa'] * 100, 0)}%" if cons["taxa"] is not None else "—",
+         f"de {cons['avaliadas']} semanas avaliadas" if cons["avaliadas"] else "nenhuma semana encerrada", False)]))
+    html_md("<div class='fl-secao'>Meta desta semana</div>")
+    with st.container(border=True):
+        html_md(f"<p class='fl-rotulo'>Fase {fi + 1} — {html.escape(fase['n'])} · esforço {html.escape(fase['rpe'])}</p>"
+                f"<p style='margin:0 0 8px'>{html.escape(P.objetivo_da_semana(atual))}</p>")
+        html_md(ui.criterios(E.criterios_semana_atual(S)))
+        st.caption("Com todos os itens em dia ao fim da semana, o plano avança para a semana seguinte.")
+
+
+def evolucao_peso() -> None:
     p = S["profile"]
-    cw, ini, meta = R.peso_atual(S), p["pesoInicial"], p["pesoMeta"]
-    st.markdown("### Peso")
-    c = st.columns(4)
-    c[0].metric("Atual" if S["weights"] else "Inicial", f"{br(cw)} kg")
-    c[1].metric("Desde o início", f"{'+' if cw - ini > 0 else ''}{br(cw - ini)} kg" if S["weights"] else "—",
-                f"{'+' if cw > ini else ''}{br((cw - ini) / ini * 100)}%" if S["weights"] else None, delta_color="inverse")
-    c[2].metric("Até a meta", f"{br(max(0, cw - meta))} kg")
+    cw, ini, meta = R.peso_atual(S), float(p["pesoInicial"]), float(p["pesoMeta"])
     ms = R.media_semana(S, R.inicio_semana(t))
-    c[3].metric("Média da semana", f"{br(ms)} kg" if ms is not None else "—")
-    st.caption("Oscilações de um dia para o outro refletem água, alimentação e intestino, não ganho ou perda comprovada de gordura. Compare médias semanais.")
+    html_md(ui.grade([
+        ("Atual" if S["weights"] else "Inicial", f"{br(cw)} kg", None, False),
+        ("Desde o início", f"{'+' if cw - ini > 0 else ''}{br(cw - ini)} kg" if S["weights"] else "—",
+         f"{'+' if cw > ini else ''}{br((cw - ini) / ini * 100)}%" if S["weights"] else None, False),
+        ("Até a meta", f"{br(max(0, cw - meta))} kg", f"meta {br(meta)} kg", False),
+        ("Média da semana", f"{br(ms)} kg" if ms is not None else "—", "2 ou mais pesagens", False)]))
+    with st.container(border=True):
+        modo = st.radio("Período do gráfico", ["diario", "semanal", "mensal"], horizontal=True,
+                        format_func={"diario": "Diário", "semanal": "Semanal", "mensal": "Mensal"}.get)
+        grafico_peso(modo)
+        st.caption("Oscilações de um dia para o outro refletem água, alimentação e intestino, não ganho ou perda comprovada "
+                   "de gordura. Compare médias semanais.")
+    cmp = E.comparacao_peso(S)
+    if cmp and cmp["registros"] >= 2:
+        st.caption(f"Primeira pesagem: {br(cmp['primeira'])} kg em {fmt_dy(cmp['data_primeira'])} · última: {br(cmp['ultima'])} kg "
+                   f"em {fmt_dy(cmp['data_ultima'])} · variação de {'+' if cmp['variacao'] > 0 else ''}{br(cmp['variacao'])} kg "
+                   f"em {cmp['registros']} registros.")
     with st.form("pesagem", clear_on_submit=True):
         st.markdown("**Registrar pesagem**")
         c1, c2 = st.columns(2)
@@ -940,12 +1132,10 @@ def tela_evolucao() -> None:
                 salvar()
                 st.success("Pesagem salva.")
                 st.rerun()
-    modo = st.radio("Gráfico", ["diario", "semanal", "mensal"], horizontal=True, format_func={"diario": "Diário", "semanal": "Semanal", "mensal": "Mensal"}.get)
-    grafico_peso(modo)
-    st.markdown("### Pesagens")
+    html_md("<div class='fl-secao'>Pesagens</div>")
     w = list(reversed(R.pesos_ordenados(S)))
     if not w:
-        st.caption("Nenhuma pesagem registrada.")
+        html_md(ui.vazio("Nenhuma pesagem registrada", "Use o formulário acima para registrar a primeira."))
     for x in w:
         c1, c2 = st.columns([4, 1])
         c1.write(f"**{br(x['peso'])} kg** · {fmt_dy(x['date'])}" + (f" · cintura {brx(x['cintura'])} cm" if ok(x.get("cintura")) else "") + f"  \n<small>{x.get('cond', '')}{' · ' + x['obs'] if x.get('obs') else ''}</small>", unsafe_allow_html=True)
@@ -953,7 +1143,45 @@ def tela_evolucao() -> None:
             S["weights"] = [y for y in S["weights"] if y["id"] != x["id"]]
             salvar()
             st.rerun()
-    st.markdown("### Relatório semanal")
+
+
+def evolucao_treinos() -> None:
+    sem = E.semanas_recentes(S, 8)
+    linhas = [{"Semana": x["rotulo"], "Concluídos": x["feitos"], "Planejados": x["planejados"], "Cardio (min)": x["cardio"]}
+              for x in sem]
+    with st.container(border=True):
+        html_md("<p class='fl-rotulo'>Frequência · últimas 8 semanas</p>")
+        if any(x["feitos"] for x in sem):
+            grafico_barras(linhas, "Concluídos", "Treinos", y2="Planejados")
+            st.caption("Barra vermelha: treinos concluídos. Fundo cinza: treinos planejados na agenda.")
+        else:
+            html_md(ui.vazio("Sem treinos concluídos", "A frequência aparece aqui depois do primeiro treino salvo."))
+    with st.container(border=True):
+        html_md("<p class='fl-rotulo'>Cardio por semana · minutos</p>")
+        if any(x["cardio"] for x in sem):
+            grafico_barras(linhas, "Cardio (min)", "Minutos", ref=150)
+            st.caption("Linha tracejada: 150 min, o mínimo semanal recomendado pela OMS.")
+        else:
+            html_md(ui.vazio("Sem cardio registrado", "Os minutos de cardio concluídos nos treinos aparecem aqui."))
+    html_md("<div class='fl-secao'>Cargas: primeiro registro × último</div>")
+    historico_cargas()
+    html_md("<div class='fl-secao'>Histórico de treinos</div>")
+    ss = sorted(S["sessions"], key=lambda s: -s.get("startedAt", 0))[:30]
+    if not ss:
+        html_md(ui.vazio("Nenhum treino registrado", "Os treinos salvos aparecem aqui, do mais recente para o mais antigo."))
+    for s in ss:
+        c1, c2 = st.columns([4, 1])
+        c1.write(f"**{R.nome_treino(s['workout'])}** · {fmt_dy(s['date'])}  \n<small>{'Concluída' if s.get('status') == 'concluida' else 'Interrompida'} · {br(s.get('pct', 0), 0)}% · {br(s.get('minutes', 0), 0)} min"
+                 + (f" · {br(s['volume'], 0)} kg de volume" if s.get("volume") else "") + (f" · ≈ {br(s['kcal'], 0)} kcal" if s.get("kcal") else "") + "</small>", unsafe_allow_html=True)
+        if c2.button("Excluir", key="ds" + s["id"]):
+            S["sessions"] = [y for y in S["sessions"] if y["id"] != s["id"]]
+            salvar()
+            st.rerun()
+
+
+
+
+def evolucao_relatorio() -> None:
     if "sem_rel" not in st.session_state:
         st.session_state.sem_rel = R.inicio_semana(t)
     c1, c2, c3 = st.columns([1, 3, 1])
@@ -966,23 +1194,11 @@ def tela_evolucao() -> None:
     texto = R.relatorio_semanal(S, st.session_state.sem_rel)
     st.code(texto, language=None)
     st.download_button("Baixar relatório (.txt)", texto.encode("utf-8"), file_name=f"foco-leve-relatorio-{st.session_state.sem_rel}.txt")
-    st.markdown("### Histórico de treinos")
-    ss = sorted(S["sessions"], key=lambda s: -s.get("startedAt", 0))[:30]
-    if not ss:
-        st.caption("Nenhum treino registrado.")
-    for s in ss:
-        c1, c2 = st.columns([4, 1])
-        c1.write(f"**{R.nome_treino(s['workout'])}** · {fmt_dy(s['date'])}  \n<small>{'Concluída' if s.get('status') == 'concluida' else 'Interrompida'} · {br(s.get('pct', 0), 0)}% · {br(s.get('minutes', 0), 0)} min"
-                 + (f" · {br(s['volume'], 0)} kg de volume" if s.get("volume") else "") + (f" · ≈ {br(s['kcal'], 0)} kcal" if s.get("kcal") else "") + "</small>", unsafe_allow_html=True)
-        if c2.button("Excluir", key="ds" + s["id"]):
-            S["sessions"] = [y for y in S["sessions"] if y["id"] != s["id"]]
-            salvar()
-            st.rerun()
 
 
 # ------------------------------------------------------------------ HÁBITOS
 def tela_habitos() -> None:
-    st.markdown("### Hábitos  \n<small>Opcional · salva automaticamente</small>", unsafe_allow_html=True)
+    cabecalho("Hábitos", "Opcional · salva automaticamente")
     dsel = st.date_input("Dia", value=R.pd(t), max_value=R.pd(t), format="DD/MM/YYYY").isoformat()
     x = S["habits"].setdefault(dsel, {})
     c1, c2 = st.columns(2)
@@ -1021,7 +1237,7 @@ def tela_habitos() -> None:
 # ------------------------------------------------------------------ PERFIL
 def tela_perfil() -> None:
     p = S["profile"]
-    st.markdown("### Perfil")
+    cabecalho("Perfil", "Seus dados, segurança e preferências")
     with st.form("perfil"):
         nome = st.text_input("Nome (opcional)", p.get("nome", ""))
         c1, c2 = st.columns(2)
@@ -1048,7 +1264,7 @@ def tela_perfil() -> None:
     i0, i1 = R.imc(S, p["pesoInicial"]), R.imc(S, R.peso_atual(S))
     st.caption(f"IMC inicial: {br(i0)} kg/m² · IMC atual: {br(i1)} kg/m² ({R.imc_categoria(i1)}). Indicador de triagem, não é diagnóstico.")
 
-    st.markdown("### Avaliação de segurança")
+    html_md("<div class='fl-secao'>Avaliação de segurança</div>")
     if S["assess"]["done"] and not st.session_state.get("editar_aval"):
         tipo, tit, txt = resultado_avaliacao()
         aviso(tipo, tit, txt)
@@ -1066,7 +1282,7 @@ def tela_perfil() -> None:
     else:
         form_avaliacao()
 
-    st.markdown("### Plano de exercícios")
+    html_md("<div class='fl-secao'>Plano de exercícios</div>")
     st.caption("Desative um exercício para tirá-lo de todas as semanas, ou mude séries, repetições e descanso. "
                "Só o que você alterar substitui a prescrição da fase. O cardio é calculado pelo plano (mínimo de 30 min).")
     usados = []
@@ -1119,7 +1335,7 @@ def tela_perfil() -> None:
         salvar()
         st.rerun()
 
-    st.markdown("### Agenda semanal")
+    html_md("<div class='fl-secao'>Agenda semanal</div>")
     cols = st.columns(2)
     for n, d in enumerate([1, 2, 3, 4, 5, 6, 0]):
         ks = list(D.TREINOS)
@@ -1130,7 +1346,7 @@ def tela_perfil() -> None:
             S["schedule"][str(d)] = v
             salvar()
 
-    st.markdown("### Lembretes")
+    html_md("<div class='fl-secao'>Lembretes</div>")
     st.info("Os lembretes aparecem no Início quando o app é aberto. Para notificações no celular é preciso a versão nativa.")
     Rm = S["reminders"]
     hora = st.time_input("Horário do lembrete de treino", datetime.strptime(Rm["hora"], "%H:%M").time())
@@ -1142,7 +1358,7 @@ def tela_perfil() -> None:
         Rm.update(novo)
         salvar()
 
-    st.markdown("### Fotos offline")
+    html_md("<div class='fl-secao'>Fotos offline</div>")
     st.caption(f"As fotos vêm do Free Exercise DB pela internet. Para usar sem internet, baixe uma vez (cerca de 3 MB) para {PASTA_FOTOS}.")
     if st.button("Baixar fotos"):
         PASTA_FOTOS.mkdir(parents=True, exist_ok=True)
@@ -1161,7 +1377,7 @@ def tela_perfil() -> None:
             barra.progress((n + 1) / len(pastas))
         st.success("Fotos baixadas." if not falhas else f"Concluído com {falhas} falha(s). Verifique a internet e tente de novo.")
 
-    st.markdown("### Cópia de segurança")
+    html_md("<div class='fl-secao'>Cópia de segurança</div>")
     dados_json = json.dumps(S, ensure_ascii=False, indent=1)
     st.download_button("Baixar cópia (.json)", dados_json.encode("utf-8"), file_name=f"foco-leve-{t}.json", mime="application/json")
     up = st.file_uploader("Restaurar a partir de uma cópia (.json do app Python ou da versão web)", type=["json", "txt"])
@@ -1188,7 +1404,7 @@ def tela_perfil() -> None:
         st.session_state.conf_reset = True
         st.rerun()
 
-    st.markdown("### Base científica e fontes")
+    html_md("<div class='fl-secao'>Base científica e fontes</div>")
     for txt, url in D.FONTES:
         st.markdown(f"- {txt} [link]({url})")
 

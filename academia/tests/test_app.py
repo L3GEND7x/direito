@@ -28,11 +28,17 @@ def test_todas_as_abas_e_um_treino():
     if botoes:
         botoes[0].click().run()
         assert not at.exception
-        cks = [c for c in at.checkbox if c.label.startswith("Série 1") or c.label == "Feito"]
-        cks[0].check().run()
+        concluir = [b for b in at.button if b.label in ("Concluir série 1", "Concluir cardio", "Concluir exercício")]
+        concluir[0].click().run()
         assert not at.exception
-        [b for b in at.button if b.label == "Finalizar sessão"][0].click().run()
-        at.radio[1].set_value("bem")
-        [b for b in at.button if b.label == "Salvar sessão"][0].click().run()
+        assert any(e["sets"][0]["done"] for e in at.session_state["S"]["active"]["ex"])
+        # reabrir o app: a sessão em andamento e a série concluída vêm do banco
+        at = AppTest.from_file(APP, default_timeout=60).run()
+        at.radio(key="aba").set_value("Treinos").run()
+        assert not at.exception and any(e["sets"][0]["done"] for e in at.session_state["S"]["active"]["ex"])
+        [b for b in at.button if b.label == "Finalizar treino"][0].click().run()
+        [r for r in at.radio if r.label == "Sensação geral"][0].set_value("bem")
+        [b for b in at.button if b.label == "Salvar treino"][0].click().run()
         assert not at.exception
-        assert any("Sessão salva" in s.value for s in at.success)
+        assert at.session_state["S"]["active"] is None and at.session_state["S"]["sessions"][-1]["status"] == "concluida"
+        assert any("Treino concluído" in m.value for m in at.markdown)  # tela de resumo
