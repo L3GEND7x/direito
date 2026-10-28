@@ -248,6 +248,7 @@ def test_modo_supabase_duas_contas_e_recuperacao_de_senha(monkeypatch):
     monkeypatch.setattr(requests, "request", falso.request)
     monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.test")
     monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-teste")
+    monkeypatch.setenv("FOCO_LEVE_SITE_URL", "https://foco-leve.test")
     st.cache_resource.clear()
     try:
         a = criar_conta(abrir(), "sa@exemplo.com")
@@ -258,10 +259,10 @@ def test_modo_supabase_duas_contas_e_recuperacao_de_senha(monkeypatch):
         assert [w["peso"] for w in entrar(abrir(), "sa@exemplo.com").session_state["S"]["weights"]] == [88.8]
         assert set(falso.linhas) == {a.session_state["usuario"]["id"], b.session_state["usuario"]["id"]}
         assert "66,6" not in todas_as_telas(entrar(abrir(), "sa@exemplo.com"))
-        # recuperação de senha pela tela de login
+        # recuperação de senha pelo código numérico (modelo de e-mail com {{ .Token }})
         r = abrir()
         campo(r, "E-mail da conta", "rec_email").input("sa@exemplo.com")
-        botao(r, "Enviar código").click().run()
+        botao(r, "Enviar link").click().run()
         assert any("Pedido enviado" in x.value for x in r.success)
         campo(r, "E-mail da conta", "red_email").input("sa@exemplo.com")
         campo(r, "Código recebido").input(falso.codigos["sa@exemplo.com"])
@@ -271,6 +272,35 @@ def test_modo_supabase_duas_contas_e_recuperacao_de_senha(monkeypatch):
         assert [w["peso"] for w in r.session_state["S"]["weights"]] == [88.8]
         assert "usuario" not in entrar(abrir(), "sa@exemplo.com").session_state  # a senha antiga não vale mais
         assert entrar(abrir(), "sa@exemplo.com", "senha-nova-77").session_state["usuario"]["email"] == "sa@exemplo.com"
+        # recuperação pelo link do e-mail padrão: volta ao app com ?rec=…&code=…
+        from urllib.parse import parse_qs, urlsplit
+        r = abrir()
+        campo(r, "E-mail da conta", "rec_email").input("sa@exemplo.com")
+        botao(r, "Enviar link").click().run()
+        assert falso.links["sa@exemplo.com"].startswith("https://foco-leve.test/?rec=")
+        q = parse_qs(urlsplit(falso.links["sa@exemplo.com"]).query)
+        link = AppTest.from_file(APP, default_timeout=60)
+        link.query_params["rec"], link.query_params["code"] = q["rec"][0], q["code"][0]
+        link.run()
+        assert not link.exception and "usuario" not in link.session_state  # ainda não entrou
+        assert dict(link.query_params) == {}  # o código saiu da URL
+        campo(link, "Nova senha (mínimo 8 caracteres)").input("senha-do-link-9")
+        campo(link, "Repita a nova senha").input("senha-do-link-9")
+        botao(link, "Salvar a nova senha e entrar").click().run()
+        assert not link.exception and link.session_state["usuario"]["email"] == "sa@exemplo.com"
+        assert [w["peso"] for w in link.session_state["S"]["weights"]] == [88.8]
+        assert entrar(abrir(), "sa@exemplo.com", "senha-do-link-9").session_state["usuario"]["email"] == "sa@exemplo.com"
+        # o mesmo link de novo (ou um link inventado) não abre nada
+        de_novo = AppTest.from_file(APP, default_timeout=60)
+        de_novo.query_params["rec"], de_novo.query_params["code"] = q["rec"][0], q["code"][0]
+        de_novo.run()
+        assert "usuario" not in de_novo.session_state and "recuperando" not in de_novo.session_state
+        assert any("venceu ou já foi usado" in w.value for w in de_novo.warning)
+        sem_chave = AppTest.from_file(APP, default_timeout=60)
+        sem_chave.query_params["code"] = "pkce-qualquer"  # link que voltou sem a chave do servidor
+        sem_chave.run()
+        assert "usuario" not in sem_chave.session_state and dict(sem_chave.query_params) == {}
+        assert any("venceu ou já foi usado" in w.value for w in sem_chave.warning)
     finally:
         st.cache_resource.clear()
 
