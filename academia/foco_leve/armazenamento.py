@@ -12,6 +12,7 @@ Toda gravação é condicional à versão lida ("compare-and-swap"): se outra ab
 """
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
@@ -19,10 +20,12 @@ import os
 import re
 import secrets
 import sqlite3
+import threading
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from .regras import mesclar
 
@@ -30,6 +33,13 @@ CAMINHO_PADRAO = Path(os.environ.get("FOCO_LEVE_DB", Path.home() / ".foco_leve" 
 LEGADO = "padrao"  # registro único das versões sem contas; só é lido para a migração, nunca gravado
 SENHA_MIN = 8
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+
+# Recuperação de senha por link (PKCE): o verificador fica só na memória do servidor, sob uma chave aleatória
+# que volta na URL do link. Sem ele o código do link não vale nada. Some ao reiniciar o app (basta pedir de novo).
+VALIDADE_LINK = 3600
+_LINKS: dict[str, tuple[str, float]] = {}
+_TRAVA_LINKS = threading.Lock()
 
 
 class Conflito(Exception):
@@ -123,7 +133,10 @@ class LojaSQLite:
         if not row:
             raise ErroAutenticacao("Sua sessão não é mais válida. Entre de novo.")
 
-    def enviar_recuperacao(self, email: str) -> None:
+    def enviar_recuperacao(self, email: str, voltar_para: str | None = None) -> None:
+        raise ErroAutenticacao("A recuperação de senha por e-mail só existe com o banco Supabase.")
+
+    def abrir_link_recuperacao(self, chave: str, codigo: str) -> dict:
         raise ErroAutenticacao("A recuperação de senha por e-mail só existe com o banco Supabase.")
 
     def redefinir_senha(self, email: str, codigo: str, nova: str) -> dict:
@@ -324,19 +337,51 @@ class LojaSupabase:
         if r.status_code != 200 or (r.json() or {}).get("id") != usuario["id"]:
             raise ErroAutenticacao("Sua sessão não é mais válida. Entre de novo.")
 
-    def enviar_recuperacao(self, email: str) -> None:
-        """Pede ao Supabase o e-mail de recuperação. A resposta não revela se o e-mail tem conta."""
+    def enviar_recuperacao(self, email: str, voltar_para: str | None = None) -> None:
+        """Pede ao Supabase o e-mail de recuperação. A resposta não revela se o e-mail tem conta.
+
+        O link do e-mail volta para `voltar_para` com ?rec=<chave>&code=<código>; o código só é trocado por uma
+        sessão junto com o verificador PKCE guardado aqui no servidor (abrir_link_recuperacao)."""
         email = (email or "").strip().lower()
         if not _EMAIL.match(email):
             raise ErroAutenticacao("Informe um e-mail válido.")
-        r = self._req("POST", "/auth/v1/recover", json={"email": email})
+        verificador = secrets.token_urlsafe(48)
+        desafio = base64.urlsafe_b64encode(hashlib.sha256(verificador.encode()).digest()).rstrip(b"=").decode()
+        chave = secrets.token_urlsafe(16)
+        agora = time.time()
+        with _TRAVA_LINKS:
+            for k in [k for k, (_, ate) in _LINKS.items() if ate < agora]:
+                del _LINKS[k]
+            _LINKS[chave] = (verificador, agora + VALIDADE_LINK)
+        caminho = "/auth/v1/recover"
+        if voltar_para:
+            caminho += "?redirect_to=" + quote(f"{voltar_para.rstrip('/')}/?rec={chave}", safe="")
+        r = self._req("POST", caminho, json={"email": email, "code_challenge": desafio, "code_challenge_method": "s256"})
         if r.status_code == 429:
             raise ErroAutenticacao("Muitos pedidos de recuperação. Aguarde alguns minutos e tente de novo.")
         if r.status_code >= 500:
             raise ErroArmazenamento(f"O servidor não enviou o e-mail (código {r.status_code}). Tente mais tarde.")
 
+    def abrir_link_recuperacao(self, chave: str, codigo: str) -> dict:
+        """Troca o código do link do e-mail (uso único) por uma sessão, com o verificador guardado no servidor."""
+        with _TRAVA_LINKS:
+            item = _LINKS.pop(chave or "", None)
+        if not item or item[1] < time.time() or not codigo:
+            raise ErroAutenticacao("Este link de recuperação venceu ou já foi usado. Peça um novo e-mail.")
+        r = self._req("POST", "/auth/v1/token?grant_type=pkce", json={"auth_code": codigo, "code_verifier": item[0]})
+        if r.status_code != 200 or not r.json().get("access_token"):
+            raise ErroAutenticacao("Este link de recuperação venceu ou já foi usado. Peça um novo e-mail.")
+        return self._usuario(r.json())
+
+    def definir_senha(self, usuario: dict, nova: str) -> None:
+        if len(nova or "") < SENHA_MIN:
+            raise ErroAutenticacao(f"A senha precisa ter pelo menos {SENHA_MIN} caracteres.")
+        r = self._req("PUT", "/auth/v1/user", usuario, json={"password": nova})
+        if r.status_code != 200:
+            raise ErroAutenticacao("O servidor recusou a nova senha (fraca ou igual à anterior). Escolha outra.")
+
     def redefinir_senha(self, email: str, codigo: str, nova: str) -> dict:
-        """Confere o código do e-mail de recuperação e grava a nova senha. Devolve a sessão já autenticada."""
+        """Confere o código numérico do e-mail (modelo com {{ .Token }}) e grava a nova senha."""
         email = validar_credenciais(email, nova)
         codigo = re.sub(r"\s", "", codigo or "")
         if not codigo.isdigit():
@@ -345,9 +390,7 @@ class LojaSupabase:
         if r.status_code != 200 or not r.json().get("access_token"):
             raise ErroAutenticacao("Código inválido ou vencido. Peça um novo e-mail de recuperação.")
         usuario = self._usuario(r.json())
-        r = self._req("PUT", "/auth/v1/user", usuario, json={"password": nova})
-        if r.status_code != 200:
-            raise ErroAutenticacao("O servidor recusou a nova senha (fraca ou igual à anterior). Escolha outra.")
+        self.definir_senha(usuario, nova)
         return usuario
 
     # ---------------------------------------------------------- dados
@@ -411,13 +454,12 @@ def configurar(secrets_: dict | None = None):
                              "Use a chave pública: anon ou publishable.")
         return LojaSupabase(url, chave)
     if os.environ.get("FOCO_LEVE_MODO_LOCAL") == "1":
-        return LojaSQLite(CAMINHO_PADRAO)
+        return LojaSQLite(os.environ.get("FOCO_LEVE_DB") or CAMINHO_PADRAO)
     return None
 
 
 def _papel_jwt(chave: str) -> str | None:
     """Papel ("anon" ou "service_role") declarado numa chave JWT do Supabase, sem validar a assinatura."""
-    import base64
     try:
         meio = chave.split(".")[1]
         return json.loads(base64.urlsafe_b64decode(meio + "=" * (-len(meio) % 4))).get("role")

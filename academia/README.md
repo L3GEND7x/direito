@@ -90,11 +90,16 @@ O dia de "hoje" segue o fuso escolhido no Perfil (padrão: Brasília), porque o 
 3. **Authentication → Sign In / Providers → Email**: deixe o login por e-mail ativo. Com "Confirm email" ligado, a
    pessoa confirma o cadastro pelo link do e-mail antes do primeiro login.
 4. **Authentication → URL Configuration → Site URL**: o link público do app no Streamlit.
-5. **Authentication → Email Templates → Reset Password**: inclua o código no texto, por exemplo
-   `Seu código para trocar a senha do Foco Leve: {{ .Token }}`. O app pede esse código (não usa o link).
+5. "Esqueci a senha" funciona com o e-mail padrão do Supabase: o link do e-mail volta para o app, que troca o código
+   do link por uma sessão (fluxo PKCE, com o verificador guardado só no servidor) e pede a nova senha. O link vale por
+   1 hora e só uma vez; se o app reiniciar nesse meio-tempo, basta pedir outro. Se o modelo **Reset Password** puder
+   ser editado (exige SMTP próprio em alguns planos), dá para incluir também `{{ .Token }}`: o app aceita o código
+   numérico em "Recebi um código numérico no e-mail".
 6. **Project Settings → API Keys / Data API**: copie a *Project URL* e a chave **pública** (anon ou publishable).
 7. No Streamlit Community Cloud: app → **Settings → Secrets**, cole o modelo de `.streamlit/secrets.toml.example`
-   com esses dois valores e salve. O app reinicia sozinho.
+   com a URL, a chave pública e o `site_url` (o link do app) e salve. Vale na próxima recarga da página. Se algo
+   estiver errado, o aviso do app diz o quê (erro de formato e a linha, seção ou campo faltando, chave secreta),
+   sem mostrar nenhum valor.
 
 O envio de e-mails do Supabase gratuito tem limite baixo de mensagens por hora; para uso com muitas pessoas,
 configure um SMTP próprio em Authentication → SMTP Settings.

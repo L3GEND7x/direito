@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import html
 import json
+import os
+import re
 import time
 import urllib.request
 from datetime import datetime
@@ -35,21 +37,46 @@ def abrir_loja():
     """Supabase se houver credenciais em Secrets ou variáveis de ambiente; SQLite só no modo local de desenvolvimento.
 
     Lido a cada execução, sem cache: Secrets salvos com o app já no ar valem na próxima recarga da página, sem
-    reiniciar. O cliente só guarda a URL e a chave pública; o token de cada pessoa fica em st.session_state."""
-    segredos = {}
+    reiniciar. O cliente só guarda a URL e a chave pública; o token de cada pessoa fica em st.session_state.
+    Devolve (loja ou None, motivo para mostrar quando não houver banco). O motivo nunca repete valores dos Secrets."""
+    segredos, motivo = {}, ""
     try:
         # load_if_toml_exists não exibe o aviso "No secrets found" quando não há arquivo (uso local)
-        if st.secrets.load_if_toml_exists() and "supabase" in st.secrets:
-            segredos = {"supabase": dict(st.secrets["supabase"])}
-    except Exception:  # noqa: BLE001 - arquivo de secrets inválido: segue com as variáveis de ambiente
-        segredos = {}
-    return A.configurar(segredos)
+        if st.secrets.load_if_toml_exists():
+            if "supabase" in st.secrets:
+                segredos = {"supabase": dict(st.secrets["supabase"])}
+                faltam = [k for k in ("url", "anon_key") if not segredos["supabase"].get(k)]
+                if faltam:
+                    motivo = "Nos Secrets, a seção [supabase] está sem: " + ", ".join(faltam) + "."
+            else:
+                motivo = "Os Secrets foram encontrados, mas sem a seção [supabase] (com url e anon_key)."
+    except Exception as e:  # noqa: BLE001 - arquivo de Secrets malformado
+        linha = re.search(r"line (\d+)", str(e))
+        motivo = ("Os Secrets do app têm um erro de formato" + (f" na linha {linha.group(1)}" if linha else "")
+                  + ". Confira as aspas retas (\") e os nomes [supabase], url e anon_key.")
+    try:
+        loja = A.configurar(segredos)
+    except ValueError as e:  # chave secreta configurada no lugar da pública
+        return None, str(e)
+    return loja, ("" if loja else motivo)
 
 
-try:
-    LOJA, ERRO_CONFIG = abrir_loja(), ""
-except ValueError as e:  # chave secreta configurada no lugar da pública
-    LOJA, ERRO_CONFIG = None, str(e)
+def endereco_do_app() -> str | None:
+    """Para onde o link de recuperação deve voltar: site_url dos Secrets, FOCO_LEVE_SITE_URL ou esta visita."""
+    try:
+        if st.secrets.load_if_toml_exists() and st.secrets.get("supabase", {}).get("site_url"):
+            return str(st.secrets["supabase"]["site_url"])
+    except Exception:  # noqa: BLE001
+        pass
+    if os.environ.get("FOCO_LEVE_SITE_URL"):
+        return os.environ["FOCO_LEVE_SITE_URL"]
+    host = (st.context.headers.get("Host") or "").strip()
+    if not re.fullmatch(r"[A-Za-z0-9.-]+(:\d+)?", host):
+        return None  # sem endereço confiável: o Supabase usa a Site URL configurada
+    return ("http://" if host.startswith(("localhost", "127.0.0.1")) else "https://") + host
+
+
+LOJA, ERRO_CONFIG = abrir_loja()
 VALIDAR_A_CADA = 300  # segundos entre confirmações da sessão no servidor de autenticação
 
 
@@ -118,37 +145,81 @@ def tela_entrada() -> None:
     if LOJA.recuperacao:
         with abas[2]:
             tela_recuperacao(bloqueado)
-    st.caption("A senha não é guardada em texto: no modo local fica só um resumo criptográfico (PBKDF2); "
-               "com Supabase, quem cuida da senha é o serviço de autenticação do Supabase.")
+    if LOJA.tipo == "supabase":
+        st.caption("Sua senha é guardada e conferida pelo serviço de autenticação do Supabase; o app não a armazena.")
+    else:
+        st.caption("Modo local: a senha não é guardada em texto, só um resumo criptográfico (PBKDF2).")
 
 
 def tela_recuperacao(bloqueado: bool) -> None:
-    """Código de recuperação enviado pelo Supabase por e-mail; a nova senha é gravada pelo próprio Supabase."""
+    """Pedido do e-mail de recuperação. O link do e-mail traz a pessoa de volta para escolher a nova senha."""
     with st.form("recuperar"):
-        st.caption("Enviaremos um código para o seu e-mail. Se o e-mail tiver conta, ele chega em alguns minutos.")
+        st.caption("Enviaremos um link para o seu e-mail. Abra o link e escolha a nova senha. "
+                   "Se o e-mail tiver conta, a mensagem chega em alguns minutos (confira também o spam).")
         email = st.text_input("E-mail da conta", key="rec_email", autocomplete="email")
-        if st.form_submit_button("Enviar código", use_container_width=True, disabled=bloqueado):
+        if st.form_submit_button("Enviar link", type="primary", use_container_width=True, disabled=bloqueado):
             try:
-                LOJA.enviar_recuperacao(email)
+                LOJA.enviar_recuperacao(email, endereco_do_app())
             except (A.ErroAutenticacao, A.ErroArmazenamento) as e:
                 st.error(str(e))
             else:
-                st.success("Pedido enviado. Confira a caixa de entrada e o spam.")
-    with st.form("redefinir"):
-        email = st.text_input("E-mail da conta", key="red_email", autocomplete="email")
-        codigo = st.text_input("Código recebido", key="red_codigo", autocomplete="one-time-code")
-        nova = st.text_input(f"Nova senha (mínimo {A.SENHA_MIN} caracteres)", type="password", key="red_senha",
+                st.success("Pedido enviado. Abra o link do e-mail em até 1 hora.")
+    with st.expander("Recebi um código numérico no e-mail"):
+        with st.form("redefinir"):
+            email = st.text_input("E-mail da conta", key="red_email", autocomplete="email")
+            codigo = st.text_input("Código recebido", key="red_codigo", autocomplete="one-time-code")
+            nova = st.text_input(f"Nova senha (mínimo {A.SENHA_MIN} caracteres)", type="password", key="red_senha",
+                                 autocomplete="new-password")
+            if st.form_submit_button("Trocar a senha e entrar", use_container_width=True, disabled=bloqueado):
+                with st.spinner("Conferindo o código…"):
+                    try:
+                        st.session_state.usuario = LOJA.redefinir_senha(email, codigo, nova)
+                    except (A.ErroAutenticacao, A.ErroArmazenamento) as e:
+                        st.session_state.falhas_login = st.session_state.get("falhas_login", []) + [time.time()]
+                        st.error(str(e))
+                        return
+                st.session_state.validado_em = time.time()
+                st.rerun()
+
+
+def retorno_do_link() -> None:
+    """Chegada pelo link do e-mail (?rec=…&code=…): troca o código por uma sessão no servidor e limpa a URL."""
+    q = st.query_params
+    if not {"rec", "code", "error_description"} & set(q.keys()):
+        return
+    chave, codigo, erro = q.get("rec", ""), q.get("code", ""), q.get("error_description", "")
+    st.query_params.clear()  # o código não fica na barra de endereço nem no histórico
+    if erro or not codigo or not chave:
+        st.session_state.aviso_login = "Este link de recuperação venceu ou já foi usado. Peça um novo e-mail."
+        return
+    try:
+        st.session_state.recuperando = LOJA.abrir_link_recuperacao(chave, codigo)
+    except (A.ErroAutenticacao, A.ErroArmazenamento) as e:
+        st.session_state.aviso_login = str(e)
+
+
+def tela_nova_senha() -> None:
+    u = st.session_state.recuperando
+    html_topo("Nova senha", u.get("email", ""))
+    with st.form("nova_senha"):
+        nova = st.text_input(f"Nova senha (mínimo {A.SENHA_MIN} caracteres)", type="password", key="ns_senha",
                              autocomplete="new-password")
-        if st.form_submit_button("Trocar a senha e entrar", type="primary", use_container_width=True, disabled=bloqueado):
-            with st.spinner("Conferindo o código…"):
-                try:
-                    st.session_state.usuario = LOJA.redefinir_senha(email, codigo, nova)
-                except (A.ErroAutenticacao, A.ErroArmazenamento) as e:
-                    st.session_state.falhas_login = st.session_state.get("falhas_login", []) + [time.time()]
-                    st.error(str(e))
-                    return
+        nova2 = st.text_input("Repita a nova senha", type="password", key="ns_senha2", autocomplete="new-password")
+        if st.form_submit_button("Salvar a nova senha e entrar", type="primary", use_container_width=True):
+            if nova != nova2:
+                st.error("As senhas não conferem.")
+                return
+            try:
+                LOJA.definir_senha(u, nova)
+            except (A.ErroAutenticacao, A.ErroArmazenamento) as e:
+                st.error(str(e))
+                return
+            st.session_state.usuario = st.session_state.pop("recuperando")
             st.session_state.validado_em = time.time()
             st.rerun()
+    if st.button("Cancelar", use_container_width=True):
+        del st.session_state["recuperando"]
+        st.rerun()
 
 
 def sair() -> None:
@@ -224,6 +295,11 @@ if LOJA is None:
     st.stop()
 
 if not st.session_state.get("usuario"):
+    retorno_do_link()
+    if st.session_state.get("recuperando"):
+        with st.container():
+            tela_nova_senha()
+        st.stop()
     if st.session_state.get("aviso_login"):
         st.warning(st.session_state.pop("aviso_login"))
     with st.container():  # bloco próprio: o formulário de login não é reaproveitado pela tela seguinte

@@ -198,6 +198,8 @@ class SupabaseFalso:
         self.fora_do_ar = False
         self.emitidos = 0
         self.codigos = {}
+        self.links = {}  # e-mail -> endereço do link de recuperação (o que a pessoa abriria)
+        self.pkce = {}  # código do link -> (uid, desafio)
 
     def _sessao(self, uid):
         self.emitidos += 1
@@ -227,8 +229,24 @@ class SupabaseFalso:
             return Resposta(200, self._sessao(uid))
         if caminho == "/auth/v1/logout":
             return Resposta(204)
-        if caminho == "/auth/v1/recover":
+        if caminho.startswith("/auth/v1/recover"):
             self.codigos[json["email"]] = "123456"  # o e-mail com o código; a resposta é igual com ou sem conta
+            uid = next((u for u, (e, _) in self.usuarios.items() if e == json["email"]), None)
+            if uid and json.get("code_challenge"):
+                from urllib.parse import parse_qs, urlsplit
+                volta = parse_qs(urlsplit(caminho).query).get("redirect_to", ["https://site-url.test/"])[0]
+                codigo = f"pkce-{len(self.pkce) + 1}"
+                self.pkce[codigo] = (uid, json["code_challenge"])
+                self.links[json["email"]] = volta + ("&" if "?" in volta else "?") + "code=" + codigo
+            return Resposta(200, {})
+        if caminho == "/auth/v1/token?grant_type=pkce":
+            import base64
+            import hashlib
+            uid, desafio = self.pkce.pop(json["auth_code"], (None, None))
+            calc = base64.urlsafe_b64encode(hashlib.sha256(json["code_verifier"].encode()).digest()).rstrip(b"=").decode()
+            if not uid or calc != desafio:
+                return Resposta(400, {"msg": "invalid flow state"})
+            return Resposta(200, self._sessao(uid))
             return Resposta(200, {})
         if caminho == "/auth/v1/verify":
             uid = next((u for u, (e, _) in self.usuarios.items() if e == json["email"]), None)
@@ -330,6 +348,28 @@ def test_supabase_recuperacao_de_senha(supa):
     with pytest.raises(A.ErroAutenticacao):
         loja.entrar("ana@exemplo.com", "senha-segura-1")
     assert loja.entrar("ana@exemplo.com", "nova-senha-123")["id"] == u["id"]
+
+
+def test_supabase_recuperacao_por_link_pkce(supa):
+    from urllib.parse import parse_qs, urlsplit
+    loja, falso = supa
+    loja.criar_conta("ana@exemplo.com", "senha-segura-1")
+    loja.enviar_recuperacao("ana@exemplo.com", "https://app.test")
+    q = parse_qs(urlsplit(falso.links["ana@exemplo.com"]).query)
+    assert falso.links["ana@exemplo.com"].startswith("https://app.test/?rec=")
+    with pytest.raises(A.ErroAutenticacao):
+        loja.abrir_link_recuperacao("chave-inventada", q["code"][0])  # sem o verificador do servidor não abre
+    loja.enviar_recuperacao("ana@exemplo.com", "https://app.test")
+    q = parse_qs(urlsplit(falso.links["ana@exemplo.com"]).query)
+    u = loja.abrir_link_recuperacao(q["rec"][0], q["code"][0])
+    assert u["email"] == "ana@exemplo.com"
+    with pytest.raises(A.ErroAutenticacao):
+        loja.abrir_link_recuperacao(q["rec"][0], q["code"][0])  # uso único
+    with pytest.raises(A.ErroAutenticacao):
+        loja.definir_senha(u, "curta")
+    loja.definir_senha(u, "nova-senha-456")
+    assert loja.entrar("ana@exemplo.com", "nova-senha-456")["id"] == u["id"]
+    loja.enviar_recuperacao("ninguem@exemplo.com", "https://app.test")  # sem conta: mesma resposta, sem link
 
 
 def test_supabase_ids_manipulados_validacao_e_exclusao(supa):
