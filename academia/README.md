@@ -28,6 +28,23 @@ streamlit run app.py --server.address 0.0.0.0
 
 e abra no celular `http://IP-DO-COMPUTADOR:8501`.
 
+## Plano de 20 semanas
+
+O plano é calculado a partir do perfil (peso, altura, idade, nível, dias, tempo e limitações) e recalculado
+quando esses dados mudam, sem alterar os treinos já registrados.
+
+- 5 fases de 4 semanas: adaptação, consolidação da técnica, progressão, consolidação da rotina e manutenção.
+- Exercícios variam toda semana (nenhuma das 20 semanas repete a mesma combinação em um treino).
+- Todo dia de treino tem pelo menos 30 min de cardio; a sessão é planejada para o tempo máximo do perfil (90 min por padrão),
+  com aquecimento, musculação, cardio e volta à calma. Se faltar tempo, saem primeiro os exercícios isolados.
+- Quanto mais longe da meta, mais minutos de cardio (dentro da faixa da OMS).
+- Com IMC alto, as fases 1 e 2 usam cardio de baixo impacto e evitam exercícios no chão ou em uma perna só.
+- Limitações escritas no perfil (joelho, ombro, lombar, quadril, tornozelo, punho) tiram do plano os exercícios que sobrecarregam a região.
+- A semana só avança com pelo menos 60% dos treinos feitos e sem dor, sinais de alerta ou recuperação ruim.
+- No Início dá para editar os dados e recalcular o plano; em Treinos, ver as 20 semanas e editar os exercícios de um treino.
+
+O plano não substitui avaliação médica nem a orientação do profissional de educação física.
+
 ## Visual
 
 Tema vermelho e preto com fontes Teko (títulos) e Poppins (texto), carregadas do Google Fonts.
@@ -56,6 +73,7 @@ Em Perfil → Cópia de segurança é possível baixar e restaurar um `.json`, i
 app.py                     interface (5 abas: Início, Treinos, Evolução, Hábitos, Perfil)
 foco_leve/dados.py         31 exercícios, 8 treinos, alternativas, intensidades de cardio, fontes
 foco_leve/regras.py        segurança, agenda, sessão, progressão, calorias, relatório
+foco_leve/plano.py         plano personalizado de 20 semanas
 foco_leve/armazenamento.py SQLite e importação de cópias
 tests/                     testes automáticos (pytest)
 ```

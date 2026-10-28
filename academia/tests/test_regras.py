@@ -22,7 +22,8 @@ def test_catalogo_consistente():
         assert k in D.EXERCICIOS and all(a in D.EXERCICIOS for a in alts)
     for k in D.FOTOS:
         assert k in D.EXERCICIOS
-    forca = [e for e in D.EXERCICIOS.values() if e["tipo"] == "carga" and not e.get("semCarga") and e["grupo"] != "Recuperação"]
+    forca = [e for e in D.EXERCICIOS.values() if e["tipo"] == "carga" and not e.get("semCarga")
+             and e["grupo"] not in ("Recuperação", "Abdômen")]
     assert all(e["series"] == 3 and str(e["reps"]).startswith("15") for e in forca)
     assert D.EXERCICIOS["esteira_caminhada"]["duracao"] == 30
     assert D.EXERCICIOS["cardio_longo"]["duracao"] == 40
@@ -46,12 +47,13 @@ def test_seguranca(S):
 
 
 def test_sessao_autopreenchimento_e_energia(S):
+    S["profile"]["nivel"] = "Intermediário"  # 3 séries desde a semana 1
     R.iniciar_sessao(S, "A")
     a = S["active"]
-    assert len(a["ex"]) == 8
+    assert len(a["ex"]) == 6 and a["semana"] == 1
     a["ex"][0]["sets"][0]["load"] = "40"
     descanso = R.marcar_serie(S, 0, 0, True)
-    assert descanso == 60
+    assert descanso == 75  # descanso da fase 1
     assert a["ex"][0]["sets"][0]["reps"] == "15"
     R.marcar_serie(S, 0, 1, True)
     assert a["ex"][0]["sets"][1]["load"] == "40"
@@ -59,15 +61,17 @@ def test_sessao_autopreenchimento_e_energia(S):
     assert a["ex"][0]["done"] is True
     assert R.volume(a) == 40 * 15 * 3
     cardio = len(a["ex"]) - 1
+    a["ex"][cardio]["sets"][0]["min"] = "30"
     a["ex"][cardio]["met"] = "4.8"
     R.marcar_serie(S, cardio, 0, True)
-    rec = R.finalizar_sessao(S, "bem", 75)
+    rec = R.finalizar_sessao(S, "bem", 75, rpe_sessao=6, fadiga=3, recuperacao="boa")
     # 30 min a 4,8 MET + 45 min a 3,5 MET, 115 kg  -> 276 + 301,9 = 578
-    assert rec["kcal"] == 578
+    assert rec["kcal"] == 578 and rec["recuperacao"] == "boa" and rec["rpeSessao"] == 6
     assert R.energia_semana(S, R.inicio_semana(R.hoje()))["cardioMin"] == 30
 
 
 def test_progressao_acsm(S):
+    S["profile"]["nivel"] = "Intermediário"
     for dia, reps in (("2026-10-01", "16"), ("2026-10-03", "16")):
         R.iniciar_sessao(S, "A")
         S["active"]["date"] = dia

@@ -18,6 +18,7 @@ import streamlit.components.v1 as components
 
 from foco_leve import armazenamento as A
 from foco_leve import dados as D
+from foco_leve import plano as P
 from foco_leve import regras as R
 from foco_leve.regras import br, brx, fmt_d, fmt_dy, num, ok
 
@@ -169,8 +170,8 @@ def prescricao(e: dict) -> str:
     return f"{e['series']} × {e['reps']}" + (" (sem carga)" if e.get("semCarga") else "") + f" · descanso {e['descanso']} s"
 
 
-def cartao_exercicio(ex_id: str, com_rec: bool) -> None:
-    e = R.get_ex(S, ex_id)
+def cartao_exercicio(ex_id: str, com_rec: bool, presc: dict | None = None) -> None:
+    e = {**R.get_ex(S, ex_id), **(presc or {})}
     livre, msg = R.status_ex(S, ex_id)
     with st.container(border=True):
         mostrar_fotos(ex_id)
@@ -198,6 +199,96 @@ function f(){{const s=Math.ceil((fim-Date.now())/1000);const el=document.getElem
 if(s<=0){{el.textContent='Pronto!';try{{navigator.vibrate&&navigator.vibrate(200)}}catch(e){{}}return;}}
 el.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');setTimeout(f,250);}}f();
 </script>""", height=70)
+
+
+def cronometro_sessao(inicio_ms: int, plano_min: int) -> None:
+    """Relógio da sessão que anda sozinho no navegador, sem recarregar o app."""
+    components.html(f"""
+<div style="font-family:Poppins,system-ui,sans-serif;background:#151519;border:1px solid #303036;color:#f4f4f5;border-radius:999px;padding:8px 22px;display:flex;justify-content:space-between;align-items:center">
+<span style="font-style:italic;color:#a1a1aa">Tempo de treino · plano ≈ {plano_min} min</span><b id="t" style="font-size:1.6rem;font-variant-numeric:tabular-nums">0:00</b></div>
+<script>
+const ini={inicio_ms};
+function f(){{const s=Math.max(0,Math.floor((Date.now()-ini)/1000));const h=Math.floor(s/3600),m=Math.floor(s%3600/60),x=s%60;
+document.getElementById('t').textContent=(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(x).padStart(2,'0');setTimeout(f,500);}}f();
+</script>""", height=70)
+
+
+def texto_etapas(pl: dict) -> str:
+    cardio = next((it for it in pl["itens"] if "duracao" in it and D.EXERCICIOS[it["id"]].get("cardio")), None)
+    partes = []
+    for nome, mins in pl["etapas"].items():
+        if not mins:
+            continue
+        extra = f" ({R.nome_ex(cardio['id'])})" if nome == "Cardio" and cardio else ""
+        partes.append(f"{nome} {mins} min{extra}")
+    return " · ".join(partes)
+
+
+CAMPOS_PERFIL = {"idade": ("Idade (anos)", 10, 100), "altura": ("Altura (cm)", 120, 230),
+                 "pesoInicial": ("Peso inicial (kg)", 30, 300), "pesoMeta": ("Peso desejado (kg)", 30, 300),
+                 "dias": ("Dias por semana", 1, 7), "tempoMax": ("Tempo máximo por sessão (min)", 30, 180)}
+NIVEIS = ["Iniciante", "Intermediário", "Avançado"]
+TEMPOS = [45, 60, 75, 90, 105, 120, 150]
+
+
+def validar_perfil(textos: dict) -> tuple[dict, list[str]]:
+    """Converte e confere os campos numéricos do perfil; devolve (valores, erros)."""
+    erros, novos = [], {}
+    for k, txt in textos.items():
+        lbl, lo, hi = CAMPOS_PERFIL[k]
+        v = num(txt)
+        if not ok(v) or not lo <= v <= hi:
+            erros.append(f"{lbl} deve ficar entre {lo} e {hi}.")
+        else:
+            novos[k] = int(round(v)) if k in ("idade", "dias", "tempoMax") else round(v, 1)
+    return novos, erros
+
+
+def editar_dados() -> None:
+    """Edição rápida no Início: muda o perfil e recalcula o plano futuro, sem tocar no histórico."""
+    p = S["profile"]
+    with st.expander("✏️ Editar meus dados e recalcular o plano"):
+        with st.form("dados_inicio"):
+            # uma linha de colunas por par de campos: no celular a ordem continua lógica
+            c1, c2 = st.columns(2)
+            peso_hoje = c1.text_input("Peso de hoje (kg, opcional)", placeholder="Ex.: 113,4")
+            meta = c2.text_input("Peso desejado (kg)", brx(p["pesoMeta"]))
+            c1, c2 = st.columns(2)
+            ini = c1.text_input("Peso inicial (kg)", brx(p["pesoInicial"]))
+            alt = c2.text_input("Altura (cm)", brx(p["altura"]))
+            c1, c2 = st.columns(2)
+            idade = c1.text_input("Idade (anos)", brx(p["idade"]))
+            nivel_atual = next((n for n in NIVEIS if n.lower()[:5] == str(p.get("nivel") or "").lower()[:5]), "Iniciante")
+            nivel = c2.selectbox("Nível de experiência", NIVEIS, index=NIVEIS.index(nivel_atual))
+            c1, c2 = st.columns(2)
+            dias = c1.selectbox("Dias de treino por semana", list(range(1, 8)), index=max(0, min(6, int(p["dias"]) - 1)))
+            tempos = sorted(set(TEMPOS) | {int(p.get("tempoMax") or 90)})
+            tempo = c2.selectbox("Tempo máximo por treino (min)", tempos, index=tempos.index(int(p.get("tempoMax") or 90)))
+            lim = st.text_area("Limitações, dores e restrições", p.get("limitacao", ""),
+                               placeholder="Ex.: dor no joelho direito ao agachar; hérnia lombar")
+            st.caption("O plano usa estes dados para escolher exercícios, séries, cardio e duração. Os treinos já registrados não mudam.")
+            if st.form_submit_button("Salvar e recalcular", type="primary"):
+                novos, erros = validar_perfil({"pesoMeta": meta, "pesoInicial": ini, "altura": alt, "idade": idade})
+                pv = num(peso_hoje)
+                if peso_hoje.strip() and (not ok(pv) or not 30 <= pv <= 300):
+                    erros.append("O peso de hoje deve ficar entre 30 e 300 kg.")
+                if erros:
+                    st.error(" ".join(erros))
+                    return
+                novos.update({"dias": int(dias), "tempoMax": int(tempo), "nivel": nivel, "limitacao": lim.strip()})
+                agenda_antes = dict(S["schedule"])
+                P.atualizar_perfil(S, novos)
+                if peso_hoje.strip():
+                    S["weights"] = [x for x in S["weights"] if x["date"] != t]
+                    S["weights"].append({"id": R.novo_id(), "date": t, "peso": round(pv, 1), "cintura": None,
+                                         "cond": "Registrado no Início", "obs": ""})
+                salvar()
+                pl = P.plano_do_dia(S, t)
+                msg = f"Hoje: {pl['nome']}" + (f", ≈ {pl['total']} min ({texto_etapas(pl)})." if pl["wk"] != "OFF" else ".")
+                if S["schedule"] != agenda_antes:
+                    msg += f" Agenda refeita para {dias} dia(s) por semana."
+                st.session_state.aviso = ("ok", "Plano recalculado", msg + " O histórico foi mantido.")
+                st.rerun()
 
 
 # ------------------------------------------------------------------ cabeçalho e navegação
@@ -341,13 +432,14 @@ def tela_inicio() -> None:
             for x in lem:
                 st.write(x)
     wk = R.treino_do_dia(S, t)
-    W = D.TREINOS[wk]
-    ficha = ()
+    pl = P.plano_do_dia(S, t)
+    ficha = (("Plano", f"semana {pl['semana']} de {D.SEMANAS_PLANO} · {pl['fase']['n']}"),)
     if wk != "OFF":
-        n = sum(1 for i in W["ex"] if R.status_ex(S, i)[0])
-        ficha = (("Duração", f"cerca de {R.minutos_estimados(S, wk)} min"), ("Exercícios", str(n)),
-                 ("Programa", f"semana {min(R.semana_programa(S), 4)} de 4"))
-    capa(W["ex"] or ["esteira_caminhada"], f"{D.DIAS_SEMANA[R.dia_js(t)].upper()}, {fmt_dy(t)}", W["nome"], W["obj"], ficha)
+        ficha = (("Duração", f"≈ {pl['total']} min"), ("Exercícios", str(len(pl["itens"])))) + ficha
+    capa([it["id"] for it in pl["itens"]] or ["esteira_caminhada"], f"{D.DIAS_SEMANA[R.dia_js(t)].upper()}, {fmt_dy(t)}",
+         pl["nome"], pl["obj"], ficha)
+    if wk != "OFF" and pl["etapas"]:
+        st.caption(texto_etapas(pl))
     if wk != "OFF":
         if S["active"]:
             st.button("Continuar treino", type="primary", on_click=ir, args=("Treinos",), use_container_width=True)
@@ -370,6 +462,7 @@ def tela_inicio() -> None:
              ("Treinos na semana", f"{sum(1 for s in ses if s.get('status') == 'concluida')} de {R.planejados_semana(S)}", None, False),
              ("Minutos na semana", br(sum(float(s.get('minutes') or 0) for s in ses), 0), None, False),
              ("kcal na semana", "≈ " + br(en["kcal"], 0), "estimativa", False)])
+    editar_dados()
     cm = en["cardioMin"]
     st.markdown(f"**Cardio na semana: {br(cm, 0)} min** — meta da OMS: 150 a 300 min")
     st.progress(min(1.0, cm / 300))
@@ -404,6 +497,7 @@ def tentar_iniciar(wk: str) -> None:
     elif R.seguranca(S) == "pending":
         st.session_state.aviso = ("alerta", "Avaliação pendente", "Conclua a avaliação de segurança antes do primeiro treino.")
     elif R.seguranca(S) in ("caution", "noclear") and wk != "REC" and not st.session_state.get("ciente"):
+        st.session_state.dia_sel = t  # a confirmação aparece no cartão de hoje
         st.session_state.pre_inicio = wk
         st.session_state._ir = "Treinos"
         st.rerun()
@@ -435,17 +529,38 @@ def tela_treinos() -> None:
                       type="primary" if d == st.session_state.dia_sel else "secondary", use_container_width=True):
             st.session_state.dia_sel = d
             st.rerun()
-    pw = R.semana_programa(S)
-    fase = D.FASES[min(pw, 4) - 1]
-    with st.expander(f"Semana {pw}{' (ciclo de 4 concluído)' if pw > 4 else ' de 4'} · {fase['n']}"):
-        for item in fase["itens"]:
-            st.markdown("- " + item)
+    sp = P.semana_do_programa(S)
+    pw = sp["semana"]
+    fi, fase = P.fase_da_semana(pw)
+    with st.container(border=True):
+        st.markdown(f"**Semana {pw} de {D.SEMANAS_PLANO} · Fase {fi + 1} — {fase['n']}**")
+        st.caption(f"Objetivo da semana: {P.objetivo_da_semana(pw)} · Esforço: {fase['rpe']}")
+        if sp["concluido"]:
+            st.success("Plano de 20 semanas concluído. Gere o relatório em Evolução e combine a próxima etapa com o profissional.")
+        elif sp["historico"]:
+            ult = sp["historico"][-1]
+            (st.caption if ult["aprovada"] else st.warning)(f"Semana anterior (semana {ult['semana']}): {ult['motivo']}")
+        with st.expander("Como a semana do plano avança"):
+            st.markdown("A semana só avança quando a anterior foi bem executada e bem recuperada:\n"
+                        "- pelo menos 60% dos treinos planejados concluídos;\n"
+                        "- nenhuma sessão interrompida por sintoma nem dor moderada ou forte;\n"
+                        "- nenhum sinal de alerta, inchaço ou dor forte no check-in;\n"
+                        "- nenhuma sessão com recuperação ruim.\n\n"
+                        "Se algo disso falhar, a mesma semana se repete. Terminar o calendário não basta.")
+        with st.expander("Ver o plano das 20 semanas"):
+            ver_plano(pw, ws)
     d = st.session_state.dia_sel
     wk = R.treino_do_dia(S, d)
-    W = D.TREINOS[wk]
-    ficha = (("Duração", f"cerca de {R.minutos_estimados(S, wk)} min"), ("Exercícios", str(len(W["ex"])))) if wk != "OFF" else ()
-    capa(W["ex"] or ["esteira_caminhada"], f"{D.DIAS_SEMANA[R.dia_js(d)].upper()} · {fmt_d(d)}" + (" · HOJE" if d == t else ""),
-         W["nome"], W["obj"], ficha)
+    pl = P.plano_do_dia(S, d, pw)
+    ficha = (("Duração", f"≈ {pl['total']} min"), ("Exercícios", str(len(pl["itens"])))) if wk != "OFF" else ()
+    capa([it["id"] for it in pl["itens"]] or ["esteira_caminhada"],
+         f"{D.DIAS_SEMANA[R.dia_js(d)].upper()} · {fmt_d(d)}" + (" · HOJE" if d == t else ""), pl["nome"], pl["obj"], ficha)
+    if wk != "OFF" and pl["etapas"]:
+        st.caption(texto_etapas(pl))
+    for x in pl["avisos"]:
+        st.caption("ℹ️ " + x)
+    if pl["bloqueados"]:
+        st.warning("**Fora do plano por segurança:**  \n" + "  \n".join(f"{R.nome_ex(x)}: {m}" for x, m in pl["bloqueados"]))
     with st.container():
         if d == t:
             if st.session_state.get("pre_inicio"):
@@ -480,28 +595,109 @@ def tela_treinos() -> None:
                 st.caption(f"{'Concluído' if s.get('status') == 'concluida' else 'Interrompido'}: {R.nome_treino(s['workout'])} · {br(s.get('pct', 0), 0)}% · {br(s.get('minutes', 0), 0)} min")
             if not ss:
                 st.caption("Nenhum treino registrado neste dia.")
-    for ex_id in W["ex"]:
-        cartao_exercicio(ex_id, d == t)
+    if wk not in ("OFF", "REC") and d >= t:
+        editar_treino(pl)
+    for it in pl["itens"]:
+        cartao_exercicio(it["id"], d == t, it)
+
+
+def ver_plano(pw: int, ws: str) -> None:
+    sem = st.selectbox("Semana", list(range(1, D.SEMANAS_PLANO + 1)), index=pw - 1, key="ver_sem",
+                       format_func=lambda n: f"Semana {n} · Fase {P.fase_da_semana(n)[0] + 1} — {P.fase_da_semana(n)[1]['n']}"
+                       + (" (atual)" if n == pw else ""))
+    fase = P.fase_da_semana(sem)[1]
+    st.caption(f"{fase['texto']} Objetivo: {P.objetivo_da_semana(sem)}")
+    if sem > pw:
+        st.caption("Prévia com os dados de hoje: o plano é recalculado se peso, dias, tempo ou limitações mudarem.")
+    for pl in P.plano_da_semana(S, sem, ws):
+        dia = D.DIAS_SEMANA[R.dia_js(pl["data"])]
+        if pl["wk"] == "OFF":
+            st.markdown(f"**{dia}** — Descanso")
+            continue
+        st.markdown(f"**{dia}** — {pl['nome']} · ≈ {pl['total']} min  \n<small>{texto_etapas(pl)}</small>",
+                    unsafe_allow_html=True)
+        linhas = [{"Exercício": R.nome_ex(it["id"]),
+                   "Prescrição": f"{it['duracao']} min" if "duracao" in it else f"{it['series']} × {it['reps']}",
+                   "Descanso": f"{it['descanso']} s" if it.get("descanso") else "—"} for it in pl["itens"]]
+        st.dataframe(pd.DataFrame(linhas), hide_index=True, use_container_width=True)
+
+
+def editar_treino(pl: dict) -> None:
+    """Troca, inclui ou remove exercícios só deste treino e desta semana; o cardio continua obrigatório."""
+    chave = f"{pl['semana']}|{pl['wk']}"
+    forca = [it for it in pl["itens"] if "duracao" not in it]
+    cardio = next((it["id"] for it in pl["itens"] if "duracao" in it and D.EXERCICIOS[it["id"]].get("cardio")), None)
+    with st.expander("✏️ Editar exercícios deste treino" + (" (personalizado)" if pl["personalizado"] else "")):
+        opcoes = [x for x, e in D.EXERCICIOS.items() if e["tipo"] == "carga" and e["grupo"] != "Recuperação"]
+        with st.form("ed_" + chave):
+            sel = st.multiselect("Exercícios de musculação, na ordem do treino", opcoes, default=[it["id"] for it in forca],
+                                 format_func=R.nome_ex)
+            mod = None
+            if cardio:
+                cardios = [c for c in D.CARDIO_TODOS if not P.motivo_bloqueio(S, c, pl["semana"])] or [cardio]
+                mod = st.selectbox("Modalidade de cardio (mínimo de 30 min)", cardios,
+                                   index=cardios.index(cardio) if cardio in cardios else 0, format_func=R.nome_ex)
+            st.caption("Séries, repetições e descanso dos exercícios atuais (exercícios novos entram com a prescrição da fase):")
+            df = pd.DataFrame([{"id": it["id"], "Exercício": R.nome_ex(it["id"]), "Séries": int(it["series"]),
+                                "Repetições": str(it["reps"]), "Descanso (s)": int(it["descanso"])} for it in forca])
+            ed = st.data_editor(df, hide_index=True, use_container_width=True, disabled=["id", "Exercício"],
+                                column_config={"id": None,
+                                               "Séries": st.column_config.NumberColumn(min_value=1, max_value=10, step=1),
+                                               "Descanso (s)": st.column_config.NumberColumn(min_value=0, max_value=600, step=5)},
+                                key="ed_tab_" + chave) if len(df) else None
+            c1, c2 = st.columns(2)
+            salvar_ed = c1.form_submit_button("Salvar este treino", type="primary")
+            restaurar = c2.form_submit_button("Voltar ao plano original")
+        if salvar_ed:
+            if not sel:
+                st.error("Escolha pelo menos um exercício de musculação.")
+                return
+            presc = {}
+            if ed is not None:
+                for _, r in ed.iterrows():
+                    reps = str(r["Repetições"]).strip()[:12]
+                    if pd.isna(r["Séries"]) or pd.isna(r["Descanso (s)"]) or not reps:
+                        st.error(f"Preencha séries, repetições e descanso de {r['Exercício']}.")
+                        return
+                    if r["id"] in sel:  # guarda só o que continua no treino
+                        presc[r["id"]] = {"series": int(r["Séries"]), "reps": reps, "descanso": int(r["Descanso (s)"])}
+            S.setdefault("ajustes", {})[chave] = {"ex": sel, "cardio": mod, "presc": presc}
+            salvar()
+            st.session_state.aviso = ("ok", "Treino atualizado", f"Vale para {pl['nome']} na semana {pl['semana']}. O resto do plano não muda.")
+            st.rerun()
+        if restaurar:
+            S.get("ajustes", {}).pop(chave, None)
+            salvar()
+            st.rerun()
 
 
 def tela_sessao() -> None:
     a = S["active"]
     W = D.TREINOS[a["workout"]]
     feitos = sum(1 for e in a["ex"] if e.get("done"))
+    semana = a.get("semana") or P.semana_do_programa(S)["semana"]
+    fi, fase = P.fase_da_semana(semana)
     with st.container(border=True):
-        st.caption(f"SESSÃO EM ANDAMENTO · {fmt_d(a['date'])}")
+        st.caption(f"SESSÃO EM ANDAMENTO · {D.DIAS_SEMANA[R.dia_js(a['date'])].upper()}, {fmt_d(a['date'])} · "
+                   f"SEMANA {semana} DE {D.SEMANAS_PLANO} · FASE {fi + 1}")
         st.subheader(W["nome"])
         st.progress(feitos / len(a["ex"]) if a["ex"] else 0.0, text=f"{feitos}/{len(a['ex'])} exercícios")
         c = st.columns(2)
-        dec = int((time.time() * 1000 - a["startedAt"]) / 1000)
-        c[0].metric("Tempo de treino", f"{dec // 60}:{dec % 60:02d}")
-        c[1].metric("Volume", f"{br(R.volume(a), 0)} kg")
-        st.caption("Marque a série ao terminar: repetições e a última carga usada são preenchidas sozinhas e o descanso começa. Esforço recomendado: 6 a 8 de 10, sem chegar à falha.")
+        c[0].metric("Volume", f"{br(R.volume(a), 0)} kg")
+        cmin = sum(num(x.get("min")) for e in a["ex"] if D.EXERCICIOS.get(e["id"], {}).get("cardio")
+                   for x in e["sets"] if x.get("done") and ok(num(x.get("min"))))
+        c[1].metric("Cardio feito", f"{br(cmin, 0)} min")
+        st.caption(f"Marque a série ao terminar: repetições e a última carga usada são preenchidas sozinhas e o descanso começa. "
+                   f"Esforço recomendado nesta fase: {fase['rpe']}, sem chegar à falha.")
+    cronometro_sessao(a["startedAt"], int(a.get("planoMin") or 0))
     if st.session_state.get("descanso_ate", 0) > time.time() * 1000:
         cronometro(st.session_state.descanso_ate)
-    if a["workout"] in ("A", "B", "C", "LA", "LB"):
-        st.info("**Aquecimento (5 a 10 min):** 5 minutos de esteira ou bicicleta em ritmo leve e 1 série leve de 10 a 12 repetições do primeiro exercício. "
-                "Ordem do treino: músculos grandes antes dos pequenos e exercícios multiarticulares antes dos isolados.")
+    if a["workout"] not in ("REC", "OFF"):
+        etapas = a.get("etapas") or {}
+        st.info(f"**Aquecimento ({etapas.get('Aquecimento', 10)} min):** 5 minutos de esteira ou bicicleta em ritmo leve e 1 série leve "
+                "de 10 a 12 repetições do primeiro exercício. Ordem do treino: músculos grandes antes dos pequenos e exercícios "
+                f"multiarticulares antes dos isolados. **Volta à calma ({etapas.get('Volta à calma', 5)} min):** cardio bem leve e "
+                "respiração no final.")
     for i, se in enumerate(a["ex"]):
         exercicio_sessao(i, se)
     st.divider()
@@ -511,13 +707,18 @@ def tela_sessao() -> None:
             sens = st.radio("Sensação geral", ["bem", "cansado", "exausto", "dor"], index=None, horizontal=True,
                             format_func={"bem": "Bem", "cansado": "Cansado, mas bem", "exausto": "Muito cansado", "dor": "Com dor"}.get)
             mins = st.number_input("Duração (minutos)", 1, 240, max(1, min(180, round((time.time() * 1000 - a["startedAt"]) / 60000))))
+            rpe_s = st.slider("Esforço da sessão inteira (0 = repouso, 10 = máximo)", 0, 10, 6)
+            c1, c2 = st.columns(2)
+            fad = c1.select_slider("Fadiga ao terminar (1 = descansado, 5 = exausto)", [1, 2, 3, 4, 5], value=3)
+            recup = c2.radio("Como está a recuperação dos últimos treinos?", ["boa", "regular", "ruim"], horizontal=True,
+                             format_func=str.capitalize)
             obs = st.text_area("Observações")
             c1, c2 = st.columns(2)
             if c1.form_submit_button("Salvar sessão", type="primary"):
                 if not sens:
                     st.error("Escolha como você se sentiu.")
                     return
-                rec = R.finalizar_sessao(S, sens, mins, obs)
+                rec = R.finalizar_sessao(S, sens, mins, obs, rpe_sessao=rpe_s, fadiga=fad, recuperacao=recup)
                 st.session_state.finalizar = False
                 st.session_state.descanso_ate = 0
                 salvar()
@@ -575,7 +776,7 @@ def tela_sessao() -> None:
 
 
 def exercicio_sessao(i: int, se: dict) -> None:
-    e = R.get_ex(S, se["id"])
+    e = R.ex_sessao(S, se)
     sid = S["active"]["id"]
     with st.container(border=True):
         mostrar_fotos(se["id"])
@@ -625,6 +826,19 @@ def exercicio_sessao(i: int, se: dict) -> None:
                 st.session_state.descanso_ate = time.time() * 1000 + desc * 1000 if desc else 0
                 salvar()
                 st.rerun()
+        if e.get("cardio") and not se.get("done"):
+            semana = S["active"].get("semana") or 1
+            mods = [c for c in D.CARDIO_TODOS if c == se["id"] or not P.motivo_bloqueio(S, c, semana)]
+            if se["id"] in mods and len(mods) > 1:
+                nova = st.selectbox("Modalidade de cardio", mods, index=mods.index(se["id"]), format_func=R.nome_ex,
+                                    key=f"mod{sid}_{i}")
+                if nova != se["id"]:
+                    entrada = R.nova_entrada(S, nova, se.get("presc"))
+                    entrada["sets"][0]["min"] = se["sets"][0].get("min", "")
+                    S["active"]["ex"][i] = entrada
+                    st.session_state.pop(f"mod{sid}_{i}", None)
+                    salvar()
+                    st.rerun()
         if e.get("cardio"):
             ops = D.INTENSIDADES[e["cardio"]]
             vals = [o[0] for o in ops]
@@ -637,7 +851,7 @@ def exercicio_sessao(i: int, se: dict) -> None:
         if alts and not any(x["done"] for x in se["sets"]):
             tr = st.selectbox("Aparelho ocupado? Trocar por", [""] + alts, format_func=lambda x: "Manter este exercício" if not x else R.nome_ex(x), key=f"sw{sid}_{i}")
             if tr:
-                S["active"]["ex"][i] = R.nova_entrada(S, tr)
+                S["active"]["ex"][i] = R.nova_entrada(S, tr, se.get("presc"))
                 st.session_state.pop(f"sw{sid}_{i}", None)
                 salvar()
                 st.rerun()
@@ -811,32 +1025,25 @@ def tela_perfil() -> None:
     with st.form("perfil"):
         nome = st.text_input("Nome (opcional)", p.get("nome", ""))
         c1, c2 = st.columns(2)
-        campos = {"idade": ("Idade (anos)", 10, 100), "altura": ("Altura (cm)", 120, 230), "pesoInicial": ("Peso inicial (kg)", 30, 300),
-                  "pesoMeta": ("Peso desejado (kg)", 30, 300), "dias": ("Dias por semana", 1, 7), "tempoMax": ("Tempo máximo por sessão (min)", 10, 180)}
         vals = {}
-        for n, (k, (lbl, lo, hi)) in enumerate(campos.items()):
+        for n, (k, (lbl, lo, hi)) in enumerate(CAMPOS_PERFIL.items()):
             vals[k] = (c1 if n % 2 == 0 else c2).text_input(lbl, brx(p[k]))
         c1, c2 = st.columns(2)
         local = c1.text_input("Local de treino", p.get("local", ""))
-        nivel = c2.text_input("Nível", p.get("nivel", ""))
+        nivel_atual = next((n for n in NIVEIS if n.lower()[:5] == str(p.get("nivel") or "").lower()[:5]), "Iniciante")
+        nivel = c2.selectbox("Nível de experiência", NIVEIS, index=NIVEIS.index(nivel_atual))
         obj = st.text_input("Objetivo", p.get("objetivo", ""))
         lim = st.text_area("Limitações e contraindicações", p.get("limitacao", ""))
         if st.form_submit_button("Salvar perfil", type="primary"):
-            erros, novos = [], {}
-            for k, (lbl, lo, hi) in campos.items():
-                v = num(vals[k])
-                if not ok(v) or not lo <= v <= hi:
-                    erros.append(f"{lbl} deve ficar entre {lo} e {hi}.")
-                else:
-                    novos[k] = round(v, 1)
+            novos, erros = validar_perfil(vals)
             if erros:
                 st.error(" ".join(erros))
             else:
-                novos["idade"], novos["dias"] = int(novos["idade"]), int(novos["dias"])
-                p.update(novos)
-                p.update({"nome": nome.strip(), "local": local.strip(), "nivel": nivel.strip(), "objetivo": obj.strip(), "limitacao": lim.strip()})
+                novos.update({"nome": nome.strip(), "local": local.strip(), "nivel": nivel, "objetivo": obj.strip(),
+                              "limitacao": lim.strip()})
+                P.atualizar_perfil(S, novos)
                 salvar()
-                st.success("Perfil salvo.")
+                st.session_state.aviso = ("ok", "Perfil salvo", "O plano foi recalculado com os dados novos. O histórico foi mantido.")
                 st.rerun()
     i0, i1 = R.imc(S, p["pesoInicial"]), R.imc(S, R.peso_atual(S))
     st.caption(f"IMC inicial: {br(i0)} kg/m² · IMC atual: {br(i1)} kg/m² ({R.imc_categoria(i1)}). Indicador de triagem, não é diagnóstico.")
@@ -860,12 +1067,15 @@ def tela_perfil() -> None:
         form_avaliacao()
 
     st.markdown("### Plano de exercícios")
-    st.caption("Séries, repetições, descanso e duração são editáveis.")
+    st.caption("Desative um exercício para tirá-lo de todas as semanas, ou mude séries, repetições e descanso. "
+               "Só o que você alterar substitui a prescrição da fase. O cardio é calculado pelo plano (mínimo de 30 min).")
     usados = []
+    for vagas in D.MODELOS.values():
+        for _, ops, _ in vagas:
+            usados += [x for x in ops if x not in usados]
     for W in D.TREINOS.values():
-        for x in W["ex"]:
-            if x not in usados:
-                usados.append(x)
+        usados += [x for x in W["ex"] if x not in usados]
+    usados = [x for x in usados if not D.EXERCICIOS[x].get("cardio")]
     linhas = []
     for x in usados:
         e = R.get_ex(S, x)
@@ -881,15 +1091,26 @@ def tela_perfil() -> None:
     c1, c2 = st.columns(2)
     if c1.button("Salvar plano", type="primary"):
         for _, r in ed.iterrows():
-            o = S["plan"].setdefault(r["id"], {})
-            o["ativo"] = bool(r["Ativo"])
             base = D.EXERCICIOS[r["id"]]
+            o = {}
+            # grava só o que difere do padrão: o resto continua seguindo a fase do plano
+            if not bool(r["Ativo"]):
+                o["ativo"] = False
             if base["tipo"] == "tempo":
-                if pd.notna(r["Duração (min)"]):
+                if pd.notna(r["Duração (min)"]) and int(r["Duração (min)"]) != int(base.get("duracao") or 0):
                     o["duracao"] = int(r["Duração (min)"])
             else:
-                o["series"], o["descanso"] = int(r["Séries"]), int(r["Descanso (s)"])
-                o["reps"] = str(r["Repetições"]).strip()[:12] or base["reps"]
+                if pd.notna(r["Séries"]) and int(r["Séries"]) != int(base["series"]):
+                    o["series"] = int(r["Séries"])
+                if pd.notna(r["Descanso (s)"]) and int(r["Descanso (s)"]) != int(base.get("descanso") or 0):
+                    o["descanso"] = int(r["Descanso (s)"])
+                reps = str(r["Repetições"]).strip()[:12]
+                if reps and reps != str(base.get("reps")):
+                    o["reps"] = reps
+            if o:
+                S["plan"][r["id"]] = o
+            else:
+                S["plan"].pop(r["id"], None)
         salvar()
         st.success("Plano atualizado.")
     if c2.button("Restaurar valores iniciais"):
