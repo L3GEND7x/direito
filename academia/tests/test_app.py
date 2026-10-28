@@ -11,11 +11,22 @@ APP = os.path.join(os.path.dirname(__file__), "..", "app.py")
 def test_todas_as_abas_e_um_treino():
     at = AppTest.from_file(APP, default_timeout=60).run()
     assert not at.exception
-    # avaliação inicial
+    # passo 1: dados reais (sem eles não dá para continuar)
+    [b for b in at.button if b.label == "Continuar"][0].click().run()
+    assert any("Preencha seus dados" in e.value for e in at.error)
+    campos = {"Peso atual (kg)": "112,5", "Peso desejado (kg)": "90", "Altura (cm)": "178", "Idade (anos)": "30"}
+    for rot, v in campos.items():
+        [x for x in at.text_input if x.label == rot][0].input(v)
+    [b for b in at.button if b.label == "Continuar"][0].click().run()
+    assert not at.exception
+    p = at.session_state["S"]["profile"]
+    assert p["confirmado"] and p["pesoInicial"] == 112.5 and p["altura"] == 178
+    assert [w["peso"] for w in at.session_state["S"]["weights"]] == [112.5]
+    # passo 2: avaliação de segurança
     resp = {"as_dor": "nao", "as_inchaco": "nao", "as_caminhar": "nao", "as_diag": "nao", "as_liberacao": "sim", "as_lesao": "nao"}
     for k, v in resp.items():
         at.radio(key=k).set_value(v)
-    at.button[0].click()  # Salvar avaliação (único botão da tela)
+    [b for b in at.button if b.label == "Salvar avaliação"][0].click()
     at.run()
     assert not at.exception
     assert any("Avaliação registrada" in s.value for s in at.success)

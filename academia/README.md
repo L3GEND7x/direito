@@ -56,7 +56,15 @@ Respeita a preferência do sistema por movimento reduzido. Sem internet, a fonte
 ## Onde ficam os dados
 
 Em um banco SQLite em `~/.foco_leve/foco_leve.db` (mude com a variável `FOCO_LEVE_DB`).
-Em Perfil → Cópia de segurança é possível baixar e restaurar um `.json`, inclusive a cópia exportada da versão web.
+Cada gravação aumenta um número de versão: se o app estiver aberto em duas abas ou aparelhos, a aba desatualizada
+recarrega os dados antes de mostrar a tela e nunca grava por cima do que a outra salvou.
+Em Perfil → Cópia de segurança é possível baixar e restaurar um `.json` (com confirmação, porque substitui os registros atuais);
+registros malformados da cópia são ignorados e contados.
+
+**No Streamlit Community Cloud o banco é apagado quando o app reinicia ou é atualizado.** Baixe a cópia de segurança
+com frequência e restaure depois de cada atualização.
+
+O dia de "hoje" segue o fuso escolhido no Perfil (padrão: Brasília), porque o servidor do Streamlit Cloud roda em UTC.
 
 ## Estrutura
 
