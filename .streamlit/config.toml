@@ -10,3 +10,7 @@ gatherUsageStats = false
 
 [client]
 toolbarMode = "minimal"
+
+[server]
+# teto do servidor para qualquer upload; o Personal IA ainda limita cada foto a 8 MB (Secrets: ia.max_foto_mb)
+maxUploadSize = 20

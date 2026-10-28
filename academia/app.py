@@ -24,8 +24,11 @@ import streamlit.components.v1 as components
 # No Streamlit Cloud, uma atualização do repositório nem sempre reinicia o processo: este arquivo roda na versão
 # nova, mas os módulos do app importados antes continuam na versão antiga (e falta o que foi acrescentado neles).
 # Antes de importá-los, recarrega os que mudaram no disco — na ordem das dependências.
-for _nome in ("foco_leve.dados", "foco_leve.regras", "foco_leve.plano", "foco_leve.evolucao",
-              "foco_leve.armazenamento", "ui"):
+MODULOS_DO_APP = ("foco_leve.dados", "foco_leve.regras", "foco_leve.plano", "foco_leve.evolucao",
+                  "foco_leve.armazenamento", "foco_leve.ia_vision", "foco_leve.ia_safety", "foco_leve.ia_context",
+                  "foco_leve.ia_storage", "foco_leve.ia_service", "ui", "personal_ai")
+_cascata = False  # depois de recarregar um módulo, recarrega também os seguintes (podem depender dele)
+for _nome in MODULOS_DO_APP:
     _mod = sys.modules.get(_nome)
     if _mod is None:
         continue  # ainda não importado: o import abaixo já lê a versão do disco
@@ -33,10 +36,12 @@ for _nome in ("foco_leve.dados", "foco_leve.regras", "foco_leve.plano", "foco_le
         _mtime = Path(_mod.__file__).stat().st_mtime
     except (OSError, TypeError):
         continue
-    if getattr(_mod, "_fl_mtime", None) != _mtime:  # mudou, ou foi importado por uma versão anterior deste arquivo
+    if _cascata or getattr(_mod, "_fl_mtime", None) != _mtime:  # mudou, ou veio de uma versão anterior deste arquivo
         _mod = importlib.reload(_mod)
         _mod._fl_mtime = _mtime
+        _cascata = True
 
+import personal_ai
 import ui
 from foco_leve import armazenamento as A
 from foco_leve import dados as D
@@ -45,7 +50,7 @@ from foco_leve import plano as P
 from foco_leve import regras as R
 from foco_leve.regras import br, brx, fmt_d, fmt_dy, num, ok
 
-for _mod in (ui, A, D, E, P, R):  # carregados agora: marca a versão do disco
+for _mod in (sys.modules[n] for n in MODULOS_DO_APP if n in sys.modules):  # carregados agora: marca a versão do disco
     if not hasattr(_mod, "_fl_mtime"):
         _mod._fl_mtime = Path(_mod.__file__).stat().st_mtime
 
@@ -561,9 +566,9 @@ def editar_dados() -> None:
 
 
 # ------------------------------------------------------------------ cabeçalho e navegação
-ABAS = ["Início", "Treinos", "Evolução", "Hábitos", "Perfil"]
-ICONES = {"Início": ":material/home:", "Treinos": ":material/fitness_center:", "Evolução": ":material/monitoring:",
-          "Hábitos": ":material/water_drop:", "Perfil": ":material/person:"}
+ABAS = ["Início", "Treinos", "Personal IA", "Evolução", "Hábitos", "Perfil"]
+ICONES = {"Início": ":material/home:", "Treinos": ":material/fitness_center:", "Personal IA": ":material/smart_toy:",
+          "Evolução": ":material/monitoring:", "Hábitos": ":material/water_drop:", "Perfil": ":material/person:"}
 if "aba" not in st.session_state:
     st.session_state.aba = "Início"
 if st.session_state.get("_ir"):
@@ -1841,4 +1846,5 @@ def tela_perfil() -> None:
 
 
 # ------------------------------------------------------------------ roteamento
-{"Início": tela_inicio, "Treinos": tela_treinos, "Evolução": tela_evolucao, "Hábitos": tela_habitos, "Perfil": tela_perfil}[aba]()
+{"Início": tela_inicio, "Treinos": tela_treinos, "Evolução": tela_evolucao, "Hábitos": tela_habitos, "Perfil": tela_perfil,
+ "Personal IA": lambda: personal_ai.tela(S, st.session_state.usuario, LOJA, salvar, t)}[aba]()

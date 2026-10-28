@@ -120,6 +120,68 @@ abra o app atual e baixe a cópia em Perfil → Cópia de segurança. Depois, qu
 própria conta e usa **Restaurar**. Num servidor próprio com o SQLite antigo, `python migrar_legado.py listar |
 exportar | atribuir` faz o mesmo com backup prévio (veja a ajuda do script).
 
+## Personal IA (Foco Leve AI — Personal Trainer)
+
+Aba **Personal IA**: conversa em português com um assistente de treino que usa os dados da sua conta (perfil,
+avaliação, plano, treinos, pesagens e hábitos), analisa fotos (JPEG, PNG, WebP), guarda o histórico e propõe ajustes.
+
+- **Provedor:** Claude, da Anthropic, pelo SDK oficial `anthropic` (texto e imagem). Modelo padrão `claude-opus-5-5`,
+  com raciocínio adaptativo, esforço `medium` e *fallback* do lado do servidor quando um classificador de segurança
+  recusa o pedido. Sem chave configurada, a aba avisa e não envia nada — não há resposta simulada.
+- **Privacidade:** conversas, mensagens e fotos ficam nas tabelas de `supabase/personal_ia.sql`, com RLS: cada conta só
+  lê, cria, altera ou exclui o que é seu, e não consegue escrever na conversa de outra pessoa. As fotos são regravadas
+  pelo app como JPEG sem metadados (EXIF/GPS). Para a IA vão só os dados necessários à pergunta, sem nome, e-mail nem
+  identificadores. Sair da conta limpa toda a tela.
+- **Segurança:** relatos como dor no peito, falta de ar ou desmaio recebem uma resposta fixa do app (procurar o SAMU,
+  192) sem passar pela IA; dor forte, inchaço, perda de força ou lesão geram um aviso fixo e uma instrução obrigatória
+  para a resposta. A IA não diagnostica, não prescreve remédios nem dietas extremas.
+- **Mudanças no plano:** a IA só *propõe* (treino da semana, tempo, dias, nível, limitação nova, descanso hoje). O app
+  mostra um cartão e grava apenas quando você toca em **Aplicar ao meu plano**, validando de novo os exercícios pelas
+  mesmas regras de segurança do plano. Peso, metas e registros nunca são alterados pela IA.
+- **Custos e limites:** por conta, 40 mensagens e 15 fotos a cada 24 h (configurável); do histórico vão o resumo da
+  conversa e as 8 últimas mensagens em texto; o prompt de sistema fica em cache.
+
+### Configurar o Personal IA
+
+1. Crie uma chave em https://console.anthropic.com → **API Keys** (exige conta com créditos ou cartão).
+2. No Supabase, rode `supabase/personal_ia.sql` no SQL Editor (depois de `schema.sql`).
+3. Em **Settings → Secrets** do Streamlit Cloud, acrescente:
+
+```toml
+[ia]
+anthropic_api_key = "COLE-AQUI-A-CHAVE"   # obrigatório; nunca no repositório
+# opcionais (valores padrão):
+# modelo = "claude-opus-5-5"
+# esforco = "medium"                       # low | medium | high | xhigh | max
+# max_tokens = 16000
+# timeout_s = 120
+# max_foto_mb = 8
+# max_fotos_por_mensagem = 3
+# limite_mensagens_dia = 40
+# limite_fotos_dia = 15
+# janela_mensagens = 8
+# fallback = true
+```
+
+A chave também pode vir da variável de ambiente `ANTHROPIC_API_KEY`. Ela só é usada no servidor.
+
+**Custo de referência (Claude Opus 5.5, outubro de 2026):** US$ 4 por milhão de tokens de entrada e US$ 20 por milhão
+de saída (leitura de cache: US$ 0,20). Uma pergunta típica (~3 mil tokens de entrada com contexto e ~800 de saída,
+incluindo raciocínio) fica perto de **US$ 0,03**; cada foto acrescenta ~1,5 mil tokens de entrada (≈ US$ 0,006). Com o
+limite padrão, o teto teórico por conta é de ~40 perguntas por dia. Para baratear, `esforco = "low"` ou outro modelo
+(ex.: `modelo = "claude-sonnet-5-5"`, US$ 2/US$ 10) — escolha sua, depois de comparar a qualidade. Confira os preços
+atuais em https://www.anthropic.com/pricing. O plano gratuito do Supabase tem 500 MB de banco: cada foto ocupa ~0,2 a
+0,4 MB.
+
+### Testar o Personal IA com duas contas
+
+1. Conta A (janela normal): abra **Personal IA**, envie "Monte meu treino de hoje." e uma foto de um aparelho.
+2. Conta B (janela anônima): a aba começa sem conversas; envie outra pergunta.
+3. Em A, recarregue: só as conversas de A aparecem. Em **Minhas conversas**, exclua uma e confirme.
+4. Peça em A "Adapte meu treino às limitações que informei": se vier um cartão de proposta, confira que o plano em
+   Treinos só muda depois de **Aplicar ao meu plano**.
+5. No Supabase, **Table Editor → foco_leve_ia_conversas**: cada linha tem o `user_id` da conta dona.
+
 ## Estrutura
 
 ```
@@ -133,6 +195,13 @@ foco_leve/evolucao.py      números da evolução calculados só com dados regis
 foco_leve/armazenamento.py contas, Supabase (REST + RLS), SQLite local e importação de cópias
 supabase/schema.sql        tabela, permissões e políticas de Row Level Security
 migrar_legado.py           decisão sobre o registro da versão sem contas (listar, exportar, atribuir)
+personal_ai.py             tela do Personal IA (conversa, fotos, histórico, propostas com confirmação)
+foco_leve/ia_service.py    comunicação com o modelo (SDK anthropic, streaming, erros, resumo)
+foco_leve/ia_context.py    contexto da conta para cada pergunta (só o necessário, com a origem de cada dado)
+foco_leve/ia_storage.py    conversas, mensagens e fotos por usuário (Supabase com RLS ou SQLite local)
+foco_leve/ia_vision.py     validação e regravação das fotos (formato, tamanho, sem metadados)
+foco_leve/ia_safety.py     sinais de alerta, validação de mensagens e das propostas da IA
+supabase/personal_ia.sql   tabelas e políticas RLS do Personal IA
 tests/                     testes automáticos (pytest)
 ```
 
@@ -144,7 +213,10 @@ python -m pytest -q
 
 `tests/test_rls_postgres.py` sobe um PostgreSQL temporário (precisa dos binários do PostgreSQL instalados; sem eles
 o teste é pulado), recria o mínimo do Supabase (papéis `anon`/`authenticated`, `auth.uid()`) e aplica o
-`supabase/schema.sql` real para tentar acessos cruzados entre contas.
+`supabase/schema.sql` e o `supabase/personal_ia.sql` reais para tentar acessos cruzados entre contas.
+`tests/ia_falso.py` é um servidor local que **simula** a API da Anthropic: os testes do Personal IA usam o SDK
+oficial apontado para ele (streaming, ferramenta, recusa, erros 401/404/429/529, queda de conexão). Nenhum teste chama
+a API real; isso exige uma chave e foi deixado para o teste manual descrito acima.
 
 ## Fontes
 
