@@ -31,12 +31,11 @@ st.markdown(ui.tema_css(), unsafe_allow_html=True)
 
 
 # ------------------------------------------------------------------ conta e estado
-@st.cache_resource
 def abrir_loja():
     """Supabase se houver credenciais em Secrets ou variáveis de ambiente; SQLite só no modo local de desenvolvimento.
 
-    O recurso compartilhado entre as sessões é apenas o cliente do banco (URL e chave pública): nenhum dado pessoal,
-    token ou usuário fica nele. Cada sessão guarda o próprio token em st.session_state, no servidor."""
+    Lido a cada execução, sem cache: Secrets salvos com o app já no ar valem na próxima recarga da página, sem
+    reiniciar. O cliente só guarda a URL e a chave pública; o token de cada pessoa fica em st.session_state."""
     segredos = {}
     try:
         # load_if_toml_exists não exibe o aviso "No secrets found" quando não há arquivo (uso local)

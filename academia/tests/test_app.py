@@ -273,3 +273,13 @@ def test_modo_supabase_duas_contas_e_recuperacao_de_senha(monkeypatch):
         assert entrar(abrir(), "sa@exemplo.com", "senha-nova-77").session_state["usuario"]["email"] == "sa@exemplo.com"
     finally:
         st.cache_resource.clear()
+
+
+def test_secrets_salvos_com_o_app_no_ar_valem_sem_reiniciar(monkeypatch):
+    """No Streamlit Cloud, salvar os Secrets não reinicia o servidor: a próxima visita já deve ver o banco."""
+    monkeypatch.delenv("FOCO_LEVE_MODO_LOCAL")
+    assert any("não foi configurado" in e.value for e in abrir().error)
+    monkeypatch.setenv("SUPABASE_URL", "https://x.supabase.test")
+    monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-teste")
+    at = abrir()  # mesmo processo, sem limpar cache
+    assert not at.error and any(x.key == "login_email" for x in at.text_input)
