@@ -107,6 +107,7 @@ def padrao() -> dict:
                    "diag": "", "diagTxt": "", "liberacao": "", "lesao": "", "proibidos": "", "recomendados": "",
                    "red": {"subito": False, "febre": False, "vermelhidao": False, "apoio": False}},
         "plan": {},
+        "ajustes": {},
         "schedule": dict(D.AGENDA_PADRAO),
         "dayOverride": {},
         "startDate": "",
@@ -128,7 +129,7 @@ def mesclar(o: dict | None) -> dict:
     for k in ["sessions", "weights"]:
         if not isinstance(out.get(k), list):
             out[k] = []
-    for k in ["plan", "dayOverride", "checkins", "habits"]:
+    for k in ["plan", "ajustes", "dayOverride", "checkins", "habits"]:
         if not isinstance(out.get(k), dict):
             out[k] = {}
     if not isinstance(out["reminders"].get("dias"), list):
@@ -225,21 +226,14 @@ def planejados_semana(S: dict) -> int:
 
 
 def semana_programa(S: dict) -> int:
-    sd = S.get("startDate") or hoje()
-    return max(0, dias_entre(sd, hoje())) // 7 + 1
+    """Semana atual do plano de 20 semanas (avança só com a semana anterior aprovada)."""
+    from . import plano
+    return plano.semana_do_programa(S)["semana"]
 
 
 def minutos_estimados(S: dict, wk: str) -> int:
-    t = 0.0
-    for ex_id in D.TREINOS[wk]["ex"]:
-        if not status_ex(S, ex_id)[0]:
-            continue
-        e = get_ex(S, ex_id)
-        if e["tipo"] == "tempo":
-            t += float(e.get("duracao") or 0)
-        else:
-            t += float(e.get("series") or 0) * (45 + float(e.get("descanso") or 0)) / 60 + 1
-    return int(round(t / 5) * 5)
+    from . import plano
+    return int(round(plano.plano_do_dia(S, hoje(), wk=wk)["total"] / 5) * 5)
 
 
 # ---------------------------------------------------------------- peso
@@ -379,20 +373,29 @@ def recomendacao(S: dict, ex_id: str) -> str:
 
 
 # ---------------------------------------------------------------- sessão
-def nova_entrada(S: dict, ex_id: str) -> dict:
-    e = get_ex(S, ex_id)
+def ex_sessao(S: dict, se: dict) -> dict:
+    """Exercício da sessão com a prescrição gravada quando ela foi iniciada."""
+    return {**get_ex(S, se["id"]), **(se.get("presc") or {})}
+
+
+def nova_entrada(S: dict, ex_id: str, presc: dict | None = None) -> dict:
+    e = {**get_ex(S, ex_id), **(presc or {})}
     n = 1 if e["tipo"] == "tempo" else max(1, min(10, int(e.get("series") or 1)))
     o = {"id": ex_id, "sets": [{"done": False, "load": "", "reps": "", "min": ""} for _ in range(n)],
          "rpe": "", "painLevel": "nenhum", "pain": "", "done": False}
+    if presc:
+        o["presc"] = {k: presc[k] for k in ("series", "reps", "descanso", "duracao") if k in presc}
     if e.get("cardio"):
-        o["met"] = "5.0" if e["cardio"] == "bike" else "3.8"
+        o["met"] = str(D.MET_PADRAO_CARDIO[e["cardio"]])
     return o
 
 
 def iniciar_sessao(S: dict, wk: str) -> None:
-    ids = [i for i in D.TREINOS[wk]["ex"] if status_ex(S, i)[0]]
+    from . import plano
+    pl = plano.plano_do_dia(S, hoje(), wk=wk)
     S["active"] = {"id": novo_id(), "date": hoje(), "workout": wk, "startedAt": int(time.time() * 1000),
-                   "ex": [nova_entrada(S, i) for i in ids]}
+                   "semana": pl["semana"], "planoMin": pl["total"], "etapas": pl["etapas"],
+                   "ex": [nova_entrada(S, it["id"], it) for it in pl["itens"]]}
     if not S.get("startDate"):
         S["startDate"] = hoje()
 
@@ -401,7 +404,7 @@ def marcar_serie(S: dict, i: int, j: int, feito: bool) -> int:
     """Marca a série; preenche repetições, carga ou minutos vazios. Devolve o descanso em segundos."""
     a = S["active"]
     se = a["ex"][i]
-    e = get_ex(S, se["id"])
+    e = ex_sessao(S, se)
     st = se["sets"][j]
     st["done"] = feito
     if not feito:
@@ -463,7 +466,8 @@ def energia_semana(S: dict, ws: str) -> dict:
     return {"kcal": k, "cardioMin": c}
 
 
-def finalizar_sessao(S: dict, sensacao: str, minutos: float, obs: str = "") -> dict:
+def finalizar_sessao(S: dict, sensacao: str, minutos: float, obs: str = "", rpe_sessao=None, fadiga=None,
+                     recuperacao: str | None = None) -> dict:
     a = S["active"]
     recordes = []
     for e in a["ex"]:
@@ -478,6 +482,7 @@ def finalizar_sessao(S: dict, sensacao: str, minutos: float, obs: str = "") -> d
     feitos = sum(1 for e in a["ex"] if e.get("done"))
     rec = {**a, "endedAt": int(time.time() * 1000), "status": "concluida", "volume": round(volume(a)),
            "feeling": sensacao, "minutes": round(minutos), "notes": obs.strip(),
+           "rpeSessao": rpe_sessao, "fadiga": fadiga, "recuperacao": recuperacao,
            "pct": feitos / len(a["ex"]) * 100 if a["ex"] else 0}
     rec["kcal"] = energia(S, rec)["kcal"]
     S["sessions"].append(rec)
