@@ -12,7 +12,6 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 
-import altair as alt
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -675,11 +674,18 @@ def grafico_peso(modo: str, altura: int = 240) -> None:
         st.caption("Registre pelo menos duas pesagens para ver o gráfico de evolução do peso.")
         return
     df = pd.DataFrame([{"ordem": n, "Data": l, "Peso (kg)": round(v, 1)} for n, (l, v) in enumerate(dados)])
-    base = alt.Chart(df).encode(x=alt.X("Data:N", sort=list(df["Data"]), title=None))
-    lo, hi = df["Peso (kg)"].min(), df["Peso (kg)"].max()
-    y = alt.Y("Peso (kg):Q", scale=alt.Scale(domain=[lo - 1.5, hi + 1.5]))
-    linha = base.mark_line(color="#EF233C", strokeWidth=3, point=alt.OverlayMarkDef(color="#FF5266", size=70)).encode(y=y, tooltip=["Data", "Peso (kg)"])
-    st.altair_chart(linha.properties(height=altura), use_container_width=True)
+    lo, hi = float(df["Peso (kg)"].min()), float(df["Peso (kg)"].max())
+    # especificação Vega-Lite direta: não depende do pacote altair, que não importa no Python 3.14
+    spec = {
+        "height": altura,
+        "mark": {"type": "line", "color": "#EF233C", "strokeWidth": 3, "point": {"color": "#FF5266", "size": 70}},
+        "encoding": {
+            "x": {"field": "Data", "type": "nominal", "sort": list(df["Data"]), "title": None},
+            "y": {"field": "Peso (kg)", "type": "quantitative", "scale": {"domain": [lo - 1.5, hi + 1.5]}},
+            "tooltip": [{"field": "Data", "type": "nominal"}, {"field": "Peso (kg)", "type": "quantitative"}],
+        },
+    }
+    st.vega_lite_chart(df, spec, use_container_width=True)
 
 
 def tela_evolucao() -> None:

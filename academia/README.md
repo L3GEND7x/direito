@@ -37,7 +37,7 @@ Sem internet, o app usa a fonte padrão do sistema; as cores e o layout continua
 
 1. Entre em https://share.streamlit.io com a conta do GitHub.
 2. **Create app** → repositório `L3GEND7x/direito`, branch `main`, arquivo principal `academia/app.py`.
-3. Em **Advanced settings**, escolha Python 3.12 e clique em **Deploy**.
+3. Clique em **Deploy**. O app funciona do Python 3.12 ao 3.14 (testado nos dois extremos).
 
 O tema vermelho e preto online vem de `.streamlit/config.toml` na raiz do repositório;
 a cópia em `academia/.streamlit/` vale quando o app roda no computador, de dentro desta pasta.
