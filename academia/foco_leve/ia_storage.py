@@ -211,6 +211,9 @@ class ArmazemIASupabase:
     def _ok(self, r, acao: str):
         if r.status_code in (401, 403) or (r.status_code == 400 and "row-level security" in r.text):
             raise AcessoNegado(f"Sem permissão para {acao}.")
+        if r.status_code == 404:  # tabela inexistente: a migração do Personal IA não foi rodada no Supabase
+            raise ErroArmazenamento("as tabelas do Personal IA ainda não existem no banco. Quem administra o app "
+                                    "precisa rodar supabase/personal_ia.sql no SQL Editor do Supabase.")
         if r.status_code >= 300:
             raise ErroArmazenamento(f"Não foi possível {acao} (código {r.status_code}).")
         return r.json() if r.text else None

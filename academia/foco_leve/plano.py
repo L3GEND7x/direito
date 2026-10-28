@@ -421,6 +421,18 @@ def agenda_para(dias: int) -> dict:
     return {str(d): D.AGENDAS_POR_DIAS[dias].get(str(d), "OFF") for d in range(7)}
 
 
+def sincronizar_pesagem_inicial(S: dict) -> bool:
+    """Contas que mudaram o peso inicial antes desta correção ficaram com a pesagem do primeiro acesso diferente
+    do perfil. O peso inicial do perfil é o declarado por último: a pesagem do primeiro acesso passa a segui-lo."""
+    if not S["profile"].get("confirmado"):
+        return False
+    ini, mudou = float(S["profile"]["pesoInicial"]), False
+    for w in S["weights"]:
+        if w.get("cond") == PESAGEM_INICIAL and float(w["peso"]) != ini:
+            w["peso"], mudou = ini, True
+    return mudou
+
+
 def atualizar_perfil(S: dict, novos: dict) -> list[str]:
     """Aplica os dados novos; se os dias mudarem, a agenda é refeita. O histórico não é tocado."""
     p = S["profile"]

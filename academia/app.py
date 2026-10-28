@@ -284,6 +284,12 @@ def estado() -> dict:
         v = LOJA.versao(u)
         if "S" not in st.session_state or (st.session_state.get("versao") != v and not st.session_state.get("pendente")):
             st.session_state.S, st.session_state.versao = LOJA.carregar_com_versao(u)
+            if P.sincronizar_pesagem_inicial(st.session_state.S):
+                try:  # corrige e grava já; se outra aba salvou no meio, a correção roda de novo na próxima carga
+                    st.session_state.versao = LOJA.salvar(u, st.session_state.S, st.session_state.versao)
+                except A.Conflito:
+                    st.session_state.pop("S", None)
+                    st.rerun()
             if not st.session_state.S.get("semente"):
                 # rotação própria da conta na escolha dos exercícios (estável: vem do identificador da conta)
                 st.session_state.S["semente"] = int(hashlib.sha256(str(u["id"]).encode()).hexdigest()[:8], 16) % 9973

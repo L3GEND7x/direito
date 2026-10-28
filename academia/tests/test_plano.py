@@ -239,3 +239,15 @@ def test_peso_inicial_corrige_a_pesagem_do_primeiro_acesso():
     S["weights"].append({"id": "w1", "date": "2026-10-10", "peso": 112.0, "cond": "", "obs": ""})
     P.atualizar_perfil(S, {"pesoInicial": 116.0})
     assert [w["peso"] for w in R.pesos_ordenados(S)] == [116.0, 112.0]  # pesagens posteriores não mudam
+
+
+def test_conta_antiga_com_pesagem_inicial_diferente_do_perfil_e_corrigida():
+    S = _perfil()
+    S["weights"][0]["peso"] = 90  # gravado no primeiro acesso; depois o perfil foi para 100 sem corrigir a pesagem
+    S["weights"].append({"id": "w9", "date": "2026-10-20", "peso": 99.0, "cond": "", "obs": ""})
+    assert P.sincronizar_pesagem_inicial(S) is True
+    assert [w["peso"] for w in R.pesos_ordenados(S)] == [100.0, 99.0]  # pesagens posteriores intactas
+    assert P.sincronizar_pesagem_inicial(S) is False  # nada mais a corrigir
+    novo = R.padrao()
+    novo["weights"] = [{"id": "x", "date": "2026-10-01", "peso": 70, "cond": P.PESAGEM_INICIAL}]
+    assert P.sincronizar_pesagem_inicial(novo) is False  # perfil ainda não confirmado: não mexe
