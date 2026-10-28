@@ -440,3 +440,19 @@ def test_personal_ia_seguranca_e_falhas(ia):
     ia.modo = "texto"
     botao(at, "Tentar responder de novo").click().run()
     assert ia.texto in _falas(at)[-1]
+
+
+def test_conta_com_pesagem_inicial_antiga_e_corrigida_ao_entrar():
+    """Caso real: primeiro acesso com 90 kg, depois o Perfil foi para 115 kg antes da correção do PR #10."""
+    from foco_leve import plano as P
+    loja = A.LojaSQLite(os.environ["FOCO_LEVE_DB"])
+    u = loja.criar_conta("pesoantigo@exemplo.com", "senha-segura-1")
+    S = R.padrao()
+    S["profile"].update({"pesoInicial": 115, "pesoMeta": 90, "confirmado": True})
+    S["assess"]["done"] = True
+    S["weights"] = [{"id": "w", "date": R.hoje(), "peso": 90.0, "cond": P.PESAGEM_INICIAL, "obs": ""}]
+    loja.salvar(u, S, 0)
+    at = entrar(abrir(), "pesoantigo@exemplo.com")
+    assert not at.exception and [w["peso"] for w in at.session_state["S"]["weights"]] == [115.0]
+    assert any(m.value == "115,0 kg" for m in at.metric) and any(m.value == "25,0 kg" for m in at.metric)
+    assert loja.carregar_com_versao(u)[0]["weights"][0]["peso"] == 115.0  # já gravado no banco

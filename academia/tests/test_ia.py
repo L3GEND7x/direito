@@ -328,3 +328,19 @@ def test_resumo_da_conversa(api):
     corpo = api.pedidos[-1]["corpo"]
     assert corpo["output_config"] == {"effort": "low"} and "quero emagrecer" in corpo["messages"][0]["content"]
     assert os.environ.get("ANTHROPIC_API_KEY") in (None, "")  # nenhum teste usou chave real
+
+
+def test_supabase_sem_a_migracao_do_personal_ia_explica_o_que_falta():
+    falso = PostgRESTFalso()
+    del falso.t["foco_leve_ia_conversas"]  # personal_ia.sql não rodado: a tabela não existe
+    orig = falso.request
+
+    def req(metodo, url, **kw):
+        if "foco_leve_ia_conversas" in url:
+            return Resposta(404, {"code": "PGRST205", "message": "Could not find the table"})
+        return orig(metodo, url, **kw)
+    falso.request = req
+    loja = A.LojaSupabase("https://x.supabase.test/", "anon-teste", sessao=falso)
+    ana = loja.criar_conta("ana@x.com", "senha-segura-1")
+    with pytest.raises(A.ErroArmazenamento, match="personal_ia.sql"):
+        ST.para(loja).conversas(ana)
