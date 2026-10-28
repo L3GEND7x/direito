@@ -923,3 +923,17 @@ FASES_20 = [
                    'Fechar o ciclo: gerar o relatório e combinar a próxima etapa com o profissional.']},
 ]
 SEMANAS_PLANO = 20
+
+# Outras formas comuns de escrever o nome do exercício (usadas para respeitar os "exercícios proibidos").
+APELIDOS = {
+    'leg_press': ['leg', 'legpress'], 'hack_maquina': ['hack'], 'agachamento_goblet': ['goblet'],
+    'stiff_halteres': ['levantamento terra romeno'], 'avanco_estatico': ['avanco', 'afundo', 'passada', 'lunge'],
+    'cadeira_extensora': ['extensora'], 'cadeira_flexora': ['flexora'], 'mesa_flexora': ['flexora'],
+    'cadeira_abdutora': ['abdutora'], 'cadeira_adutora': ['adutora'], 'panturrilha_sentado': ['gemeos'],
+    'panturrilha_em_pe': ['gemeos'], 'esteira_caminhada': ['esteira'], 'esteira_inclinada': ['esteira'],
+    'cardio_longo': ['esteira'], 'bicicleta': ['bike'], 'bike_reclinada': ['bike'], 'eliptico': ['transport'],
+    'puxada_polia': ['pulldown', 'puxador'], 'puxada_supinada': ['pulldown', 'puxador'],
+    'desenvolvimento_maquina': ['desenvolvimento'], 'desenvolvimento_halteres': ['desenvolvimento'],
+    'crucifixo_maquina': ['voador', 'peck deck'], 'crossover_polia': ['crossover'], 'face_pull': ['face pull'],
+    'abdominal_maquina': ['abdominal'], 'abdominal_polia': ['abdominal'], 'triceps_frances': ['frances'],
+}

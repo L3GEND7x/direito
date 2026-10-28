@@ -14,16 +14,24 @@ pip install -r requirements.txt
 
 ## Executar
 
+O app exige login e guarda os dados de cada conta separadamente. Ele só abre dados pessoais com um banco configurado:
+
+- **Supabase** (o do app publicado): siga "Configurar o Supabase" abaixo e informe as credenciais em Secrets.
+- **Modo local** (só para desenvolvimento no computador): SQLite em `~/.foco_leve/foco_leve.db`.
+
 ```bash
-streamlit run app.py
+FOCO_LEVE_MODO_LOCAL=1 streamlit run app.py
 ```
+
+(No Windows PowerShell: `$env:FOCO_LEVE_MODO_LOCAL="1"; streamlit run app.py`.)
+Sem Supabase e sem o modo local, o app mostra só um aviso de configuração pendente.
 
 O app abre no navegador em http://localhost:8501.
 
 **No celular (mesma rede Wi-Fi do computador):**
 
 ```bash
-streamlit run app.py --server.address 0.0.0.0
+FOCO_LEVE_MODO_LOCAL=1 streamlit run app.py --server.address 0.0.0.0
 ```
 
 e abra no celular `http://IP-DO-COMPUTADOR:8501`.
@@ -53,18 +61,59 @@ com ícones, anéis de progresso, linha do tempo das 20 semanas e gráficos com 
 O tema fica em `assets/tema.css` (variáveis de cor, tipografia, espaçamento, raios e sombras) e os componentes em `ui.py`.
 Respeita a preferência do sistema por movimento reduzido. Sem internet, a fonte cai para a do sistema e o resto continua igual.
 
-## Onde ficam os dados
+## Contas e isolamento dos dados
 
-Em um banco SQLite em `~/.foco_leve/foco_leve.db` (mude com a variável `FOCO_LEVE_DB`).
+- Cadastro, login, saída e recuperação de senha. Com Supabase, a senha é tratada só pelo Supabase Auth; no modo
+  local fica apenas um resumo PBKDF2-SHA256 com sal (nunca a senha).
+- A identidade vem do token emitido pelo servidor de autenticação e guardado na sessão do Streamlit no servidor;
+  nada na URL ou no navegador escolhe de quem são os dados. A sessão é reconfirmada no servidor a cada 5 minutos.
+- No Supabase, todo o estado pessoal da conta (perfil, avaliação, pesagens, plano e treinos personalizados, sessão
+  em andamento, treinos concluídos, metas, preferências, hábitos e check-ins) fica numa linha da tabela
+  `foco_leve_estado` cujo dono é `auth.uid()`. As políticas de Row Level Security de `supabase/schema.sql` impedem,
+  no próprio Postgres, que uma conta leia, crie, altere ou apague a linha de outra.
+- O único recurso compartilhado entre sessões (`st.cache_resource`) é o cliente do banco, sem tokens nem dados.
+- Sair da conta limpa toda a sessão do navegador antes de mostrar o login.
+- O app não recebe fotos nem arquivos pessoais (as fotos dos exercícios são públicas).
+
 Cada gravação aumenta um número de versão: se o app estiver aberto em duas abas ou aparelhos, a aba desatualizada
 recarrega os dados antes de mostrar a tela e nunca grava por cima do que a outra salvou.
-Em Perfil → Cópia de segurança é possível baixar e restaurar um `.json` (com confirmação, porque substitui os registros atuais);
-registros malformados da cópia são ignorados e contados.
-
-**No Streamlit Community Cloud o banco é apagado quando o app reinicia ou é atualizado.** Baixe a cópia de segurança
-com frequência e restaure depois de cada atualização.
+Em Perfil → Cópia de segurança é possível baixar e restaurar um `.json` da própria conta (com confirmação, porque
+substitui os registros atuais); a cópia não leva e-mail, identificador nem token.
 
 O dia de "hoje" segue o fuso escolhido no Perfil (padrão: Brasília), porque o servidor do Streamlit Cloud roda em UTC.
+
+## Configurar o Supabase
+
+1. Crie um projeto em https://supabase.com (plano gratuito serve).
+2. **SQL Editor → New query**: cole todo o conteúdo de `supabase/schema.sql` e clique em **Run**. Pode rodar de novo
+   sem perder dados.
+3. **Authentication → Sign In / Providers → Email**: deixe o login por e-mail ativo. Com "Confirm email" ligado, a
+   pessoa confirma o cadastro pelo link do e-mail antes do primeiro login.
+4. **Authentication → URL Configuration → Site URL**: o link público do app no Streamlit.
+5. **Authentication → Email Templates → Reset Password**: inclua o código no texto, por exemplo
+   `Seu código para trocar a senha do Foco Leve: {{ .Token }}`. O app pede esse código (não usa o link).
+6. **Project Settings → API Keys / Data API**: copie a *Project URL* e a chave **pública** (anon ou publishable).
+7. No Streamlit Community Cloud: app → **Settings → Secrets**, cole o modelo de `.streamlit/secrets.toml.example`
+   com esses dois valores e salve. O app reinicia sozinho.
+
+O envio de e-mails do Supabase gratuito tem limite baixo de mensagens por hora; para uso com muitas pessoas,
+configure um SMTP próprio em Authentication → SMTP Settings.
+
+### Testar com duas contas
+
+1. Numa janela normal, crie a conta A, faça o primeiro acesso e registre um peso e um hábito.
+2. Numa janela anônima (ou outro aparelho), crie a conta B: ela deve começar vazia.
+3. Registre um peso diferente em B. Volte à janela de A e recarregue: A continua só com os próprios registros.
+4. Em B, use Perfil → Sair da conta e entre como A: aparecem só os dados de A.
+5. No Supabase, **Table Editor → foco_leve_estado** deve mostrar duas linhas, uma por `user_id`.
+
+## Dados da versão anterior (sem contas)
+
+As versões anteriores guardavam um único registro compartilhado por todos os visitantes. Não dá para saber de quem
+ele é, então o app novo não o mostra nem o atribui a ninguém, e nunca o apaga. Antes de publicar a versão com contas,
+abra o app atual e baixe a cópia em Perfil → Cópia de segurança. Depois, quem for dono dos registros entra na
+própria conta e usa **Restaurar**. Num servidor próprio com o SQLite antigo, `python migrar_legado.py listar |
+exportar | atribuir` faz o mesmo com backup prévio (veja a ajuda do script).
 
 ## Estrutura
 
@@ -76,7 +125,9 @@ foco_leve/dados.py         31 exercícios, 8 treinos, alternativas, intensidades
 foco_leve/regras.py        segurança, agenda, sessão, progressão, calorias, relatório
 foco_leve/plano.py         plano personalizado de 20 semanas
 foco_leve/evolucao.py      números da evolução calculados só com dados registrados
-foco_leve/armazenamento.py SQLite e importação de cópias
+foco_leve/armazenamento.py contas, Supabase (REST + RLS), SQLite local e importação de cópias
+supabase/schema.sql        tabela, permissões e políticas de Row Level Security
+migrar_legado.py           decisão sobre o registro da versão sem contas (listar, exportar, atribuir)
 tests/                     testes automáticos (pytest)
 ```
 
@@ -85,6 +136,10 @@ tests/                     testes automáticos (pytest)
 ```bash
 python -m pytest -q
 ```
+
+`tests/test_rls_postgres.py` sobe um PostgreSQL temporário (precisa dos binários do PostgreSQL instalados; sem eles
+o teste é pulado), recria o mínimo do Supabase (papéis `anon`/`authenticated`, `auth.uid()`) e aplica o
+`supabase/schema.sql` real para tentar acessos cruzados entre contas.
 
 ## Fontes
 

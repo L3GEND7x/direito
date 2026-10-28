@@ -1,7 +1,6 @@
 /* Foco Leve — sistema de design.
    Preto profundo, grafite nas superfícies e um único vermelho de destaque.
-   Tipografia do sistema (SF Pro no iPhone e no Mac), Inter como alternativa nos demais aparelhos. */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+   Só fontes do sistema (SF Pro no iPhone e no Mac, Roboto no Android, Segoe UI no Windows): nada é baixado de fora. */
 
 :root {
   color-scheme: dark;
@@ -24,8 +23,8 @@
   --warning: #ffd60a;
   --danger: #ff453a;
   /* tipografia */
-  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
-  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, system-ui, sans-serif;
   --fs-caption: .75rem;
   --fs-small: .8125rem;
   --fs-body: .9375rem;
@@ -142,13 +141,16 @@ input::placeholder, textarea::placeholder { color: var(--text-3) !important; }
 /* opções em pílulas */
 .stRadio [role="radiogroup"] { gap: 8px; }
 .stRadio [role="radiogroup"] label {
-  background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 14px; min-height: 40px; margin: 0;
+  background: var(--surface-2); border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; min-height: 44px; min-width: 44px; justify-content: center; margin: 0;
   transition: background var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 .stRadio [role="radiogroup"] label:has(input:checked) { background: var(--accent-soft); border-color: rgba(240, 54, 74, .55); }
 .stRadio [role="radiogroup"] label:has(input:checked) p { color: var(--text); }
 .stRadio [role="radiogroup"] label > div:first-child { display: none; }
-.stCheckbox label { min-height: 40px; align-items: center; }
+.stCheckbox label { min-height: 44px; align-items: center; }
+/* áreas de toque de pelo menos 44 px (listas, botões de mais/menos e abas segmentadas) */
+[data-baseweb="select"] > div { min-height: 44px; }
+[data-testid="stNumberInputStepDown"], [data-testid="stNumberInputStepUp"] { min-width: 44px; min-height: 44px; }
 [data-testid="stSlider"] [role="slider"] { box-shadow: 0 0 0 4px var(--accent-soft); }
 
 /* dias da semana como faixa rolável */
@@ -162,7 +164,8 @@ input::placeholder, textarea::placeholder { color: var(--text-3) !important; }
   background: var(--surface) !important; border: 1px solid var(--line) !important; border-radius: var(--r-lg) !important; box-shadow: var(--shadow);
 }
 [data-testid="stExpander"] details { background: var(--surface); border: 1px solid var(--line) !important; border-radius: var(--r-lg) !important; overflow: hidden; }
-[data-testid="stExpander"] summary { min-height: 52px; padding: 0 var(--sp-4); }
+[data-testid="stExpander"] summary { min-height: 52px; padding: 0 var(--sp-4); display: flex; align-items: center; }
+[data-testid="stExpander"] summary > span { align-items: center; width: 100%; }
 [data-testid="stExpander"] summary p { font-weight: 600; }
 [data-testid="stExpander"] summary:hover p { color: var(--text) !important; }
 [data-testid="stMetric"] { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4); }
@@ -175,7 +178,7 @@ div[data-testid="stMetricLabel"] p { color: var(--text-2) !important; }
 
 /* abas internas como controle segmentado */
 .stTabs [data-baseweb="tab-list"] { gap: 2px; background: var(--surface-2); padding: 3px; border-radius: 12px; overflow-x: auto; scrollbar-width: none; }
-.stTabs [data-baseweb="tab"] { flex: 1 0 auto; height: 36px; border-radius: 9px; padding: 0 14px; color: var(--text-2); }
+.stTabs [data-baseweb="tab"] { flex: 1 0 auto; height: 44px; border-radius: 9px; padding: 0 14px; color: var(--text-2); }
 .stTabs [data-baseweb="tab"] p { font-size: var(--fs-small) !important; font-weight: 600; }
 .stTabs [aria-selected="true"] { background: var(--surface-3) !important; color: var(--text) !important; box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
 .stTabs [data-baseweb="tab-highlight"], .stTabs [data-baseweb="tab-border"] { display: none; }

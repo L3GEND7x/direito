@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import math
 
+import re
+
 from . import dados as D
 from . import regras as R
 
@@ -82,11 +84,53 @@ def cardio_semanal_alvo(S: dict) -> int:
 
 
 # ---------------------------------------------------------------- exercícios permitidos
+def _normalizar(txt: str) -> str:
+    import unicodedata
+    t = unicodedata.normalize("NFD", str(txt or "").lower())
+    t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return " " + re.sub(r"[^a-z0-9]+", " ", t).strip() + " "
+
+
+def nomes_do_exercicio(ex_id: str) -> list[str]:
+    """Formas como alguém escreveria o exercício: nome sem o parêntese, a primeira palavra (se longa) e apelidos."""
+    nome = re.sub(r"\(.*?\)|\d+\s*°?", "", D.EXERCICIOS[ex_id]["nome"])  # sem parêntese e sem “45°”
+    formas = [_normalizar(nome)]
+    primeira = _normalizar(nome).split()[0] if _normalizar(nome).split() else ""
+    if len(primeira) >= 5:
+        formas.append(f" {primeira} ")
+    formas += [_normalizar(x) for x in D.APELIDOS.get(ex_id, [])]
+    return [f for f in formas if f.strip()]
+
+
+def proibido_por_nome(S: dict, ex_id: str) -> str:
+    """O nome (ou apelido) do exercício aparece em “Exercícios proibidos” da avaliação.
+
+    O nome completo bloqueia só aquele exercício. A primeira palavra sozinha (ex.: “rosca”, “cadeira”) bloqueia
+    a família inteira, a não ser que o texto já cite o nome completo de algum exercício dessa família: assim
+    “rosca martelo” tira só a rosca martelo e “rosca” tira todas."""
+    texto = _normalizar(S["assess"].get("proibidos"))
+    if not texto.strip():
+        return ""
+    formas = nomes_do_exercicio(ex_id)
+    if formas[0] in texto:
+        return formas[0].strip()
+    primeira = formas[0].split()[0]
+    familia_citada = any(nomes_do_exercicio(x)[0] in texto for x in D.EXERCICIOS
+                         if x != ex_id and nomes_do_exercicio(x)[0].split()[0] == primeira)
+    for f in formas[1:]:
+        if f in texto and not (f.strip() == primeira and familia_citada):
+            return f.strip()
+    return ""
+
+
 def motivo_bloqueio(S: dict, ex_id: str, semana: int) -> str:
     """Texto do motivo quando o exercício não deve entrar no plano; vazio se pode."""
     livre, msg = R.status_ex(S, ex_id)
     if not livre:
         return msg
+    termo = proibido_por_nome(S, ex_id)
+    if termo:
+        return f"Listado como proibido na avaliação (“{termo}”). Só volte a fazer com liberação do profissional."
     for regiao, palavra in regioes_limitadas(S).items():
         if ex_id in D.ARTICULACOES.get(regiao, []):
             return f"Fora do plano por causa de “{palavra}” nas limitações. Inclua só com liberação do profissional."

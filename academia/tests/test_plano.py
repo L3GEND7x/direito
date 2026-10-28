@@ -165,3 +165,30 @@ def test_sessao_grava_a_prescricao_do_plano(S):
     a = S["active"]
     assert all("presc" in e for e in a["ex"]) and a["etapas"]["Aquecimento"] == 10
     assert R.ex_sessao(S, a["ex"][-1])["duracao"] >= 30
+
+
+def test_exercicios_proibidos_por_nome_saem_do_plano(S):
+    S["assess"]["proibidos"] = "Não fazer leg press nem agachamento; rosca martelo também não."
+    for semana in range(1, 21):
+        for wk in ("A", "B", "LA", "LB", "FULL"):
+            pl = P.plano_do_dia(S, ws(), semana, wk=wk)
+            assert not set(ids(pl)) & {"leg_press", "agachamento_goblet", "hack_maquina", "rosca_martelo"}, (semana, wk)
+    assert "rosca_sentado" in {x for x in D.EXERCICIOS if not P.proibido_por_nome(S, x)}  # só a rosca citada sai
+    m = P.motivo_bloqueio(S, "leg_press", 1)
+    assert "proibido" in m and "leg press" in m
+
+
+def test_lesao_em_recuperacao_pede_confirmacao_e_nao_progride(S):
+    S["assess"]["lesao"] = "sim"
+    assert R.seguranca(S) == "caution"
+    assert "não aumente a carga" in R.recomendacao(S, "supino_maquina")
+    S["assess"]["lesao"] = "nao_sei"
+    assert R.seguranca(S) == "caution"
+    S["assess"]["lesao"] = "nao"
+    assert R.seguranca(S) == "ok"
+
+
+def test_troca_de_aparelho_respeita_limitacoes(S):
+    S["profile"]["limitacao"] = "dor no joelho"
+    alternativas = [x for x in D.ALTERNATIVAS["leg_press"] if not P.motivo_bloqueio(S, x, 3)]
+    assert alternativas == []  # agachamento e avanço também forçam o joelho

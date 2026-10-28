@@ -239,13 +239,18 @@ def alerta_vermelho(S: dict) -> bool:
     return any(S["assess"]["red"].values()) or bool(ci and ci.get("red"))
 
 
+def lesao_em_recuperacao(S: dict) -> bool:
+    """Lesão muscular em recuperação marcada como "sim" ou "não sei": sem progressão e com confirmação antes do treino."""
+    return S["assess"].get("lesao") in ("sim", "nao_sei")
+
+
 def seguranca(S: dict) -> str:
     """urgent | pending | caution | noclear | ok"""
     if alerta_vermelho(S):
         return "urgent"
     if not S["assess"].get("done"):
         return "pending"
-    if sintomas(S):
+    if sintomas(S) or lesao_em_recuperacao(S):
         return "caution"
     if S["assess"].get("liberacao") != "sim":
         return "noclear"
@@ -394,6 +399,10 @@ def recomendacao(S: dict, ex_id: str) -> str:
     """Sugestão de carga para a próxima série, pela regra de progressão do ACSM."""
     e = get_ex(S, ex_id)
     h = historico_ex(S, ex_id)
+    if lesao_em_recuperacao(S) and e["tipo"] != "tempo":
+        ult = [x for x in h if x["max"] is not None]
+        ref = f"Última carga: {brx(ult[-1]['max'])} kg. " if ult else "Use carga leve, só na amplitude sem dor. "
+        return ref + "Lesão muscular em recuperação registrada: não aumente a carga até a liberação do profissional."
     if not h:
         if e["tipo"] == "tempo":
             return "Primeira vez: comece em ritmo leve e observe a tolerância."

@@ -30,27 +30,212 @@ PASTA_FOTOS = A.CAMINHO_PADRAO.parent / "fotos"
 st.markdown(ui.tema_css(), unsafe_allow_html=True)
 
 
-# ------------------------------------------------------------------ estado
+# ------------------------------------------------------------------ conta e estado
+@st.cache_resource
+def abrir_loja():
+    """Supabase se houver credenciais em Secrets ou variáveis de ambiente; SQLite só no modo local de desenvolvimento.
+
+    O recurso compartilhado entre as sessões é apenas o cliente do banco (URL e chave pública): nenhum dado pessoal,
+    token ou usuário fica nele. Cada sessão guarda o próprio token em st.session_state, no servidor."""
+    segredos = {}
+    try:
+        # load_if_toml_exists não exibe o aviso "No secrets found" quando não há arquivo (uso local)
+        if st.secrets.load_if_toml_exists() and "supabase" in st.secrets:
+            segredos = {"supabase": dict(st.secrets["supabase"])}
+    except Exception:  # noqa: BLE001 - arquivo de secrets inválido: segue com as variáveis de ambiente
+        segredos = {}
+    return A.configurar(segredos)
+
+
+try:
+    LOJA, ERRO_CONFIG = abrir_loja(), ""
+except ValueError as e:  # chave secreta configurada no lugar da pública
+    LOJA, ERRO_CONFIG = None, str(e)
+VALIDAR_A_CADA = 300  # segundos entre confirmações da sessão no servidor de autenticação
+
+
+def html_topo(titulo: str, sobre: str) -> None:
+    st.markdown(ui.cabecalho(titulo, sobre), unsafe_allow_html=True)
+
+
+def nota_banco() -> str:
+    if LOJA.tipo == "supabase":
+        return "Seus dados ficam na sua conta, em um banco de dados persistente (Supabase)."
+    return ("Modo local de desenvolvimento: os dados ficam neste computador, separados por conta. "
+            "Baixe a cópia de segurança com frequência.")
+
+
+def tela_configuracao_pendente() -> None:
+    """Sem banco configurado o app não abre dados pessoais (nada de SQLite compartilhado no servidor público)."""
+    html_topo("Foco Leve", "Treino e emagrecimento")
+    st.error(ERRO_CONFIG or "O banco de dados ainda não foi configurado, por isso o acesso às contas está desativado.")
+    st.markdown("Quem administra o app precisa informar a URL e a chave pública do Supabase em **Settings → Secrets** "
+                "do Streamlit Community Cloud (veja `academia/.streamlit/secrets.toml.example` e o README). "
+                "Para testar no computador, rode com `FOCO_LEVE_MODO_LOCAL=1`.")
+
+
+def tela_entrada() -> None:
+    """Login e cadastro. Nenhum dado pessoal é lido ou gravado antes de saber de quem é."""
+    html_topo("Entrar", "Treino e emagrecimento")
+    st.caption(nota_banco())
+    falhas = st.session_state.get("falhas_login", [])
+    falhas = [x for x in falhas if time.time() - x < 60]
+    st.session_state.falhas_login = falhas
+    bloqueado = len(falhas) >= 5
+    if bloqueado:
+        st.error("Muitas tentativas seguidas. Aguarde 1 minuto e tente de novo.")
+    abas = st.tabs(["Entrar", "Criar conta"] + (["Esqueci a senha"] if LOJA.recuperacao else []))
+    aba_entrar, aba_criar = abas[:2]
+    with aba_entrar, st.form("entrar"):
+        email = st.text_input("E-mail", key="login_email", autocomplete="email")
+        senha = st.text_input("Senha", type="password", key="login_senha", autocomplete="current-password")
+        if st.form_submit_button("Entrar", type="primary", use_container_width=True, disabled=bloqueado):
+            with st.spinner("Entrando…"):
+                try:
+                    st.session_state.usuario = LOJA.entrar(email, senha)
+                except (A.ErroAutenticacao, A.ErroArmazenamento) as e:
+                    st.session_state.falhas_login = falhas + [time.time()]
+                    st.error(str(e))
+                    return
+            st.session_state.validado_em = time.time()
+            st.rerun()
+    with aba_criar, st.form("criar"):
+        email = st.text_input("E-mail", key="novo_email", autocomplete="email")
+        senha = st.text_input(f"Senha (mínimo {A.SENHA_MIN} caracteres)", type="password", key="novo_senha",
+                              autocomplete="new-password")
+        senha2 = st.text_input("Repita a senha", type="password", key="novo_senha2", autocomplete="new-password")
+        if st.form_submit_button("Criar conta", type="primary", use_container_width=True, disabled=bloqueado):
+            if senha != senha2:
+                st.error("As senhas não conferem.")
+                return
+            with st.spinner("Criando a conta…"):
+                try:
+                    st.session_state.usuario = LOJA.criar_conta(email, senha)
+                except (A.ErroAutenticacao, A.ErroArmazenamento) as e:
+                    st.error(str(e))
+                    return
+            st.session_state.validado_em = time.time()
+            st.rerun()
+    if LOJA.recuperacao:
+        with abas[2]:
+            tela_recuperacao(bloqueado)
+    st.caption("A senha não é guardada em texto: no modo local fica só um resumo criptográfico (PBKDF2); "
+               "com Supabase, quem cuida da senha é o serviço de autenticação do Supabase.")
+
+
+def tela_recuperacao(bloqueado: bool) -> None:
+    """Código de recuperação enviado pelo Supabase por e-mail; a nova senha é gravada pelo próprio Supabase."""
+    with st.form("recuperar"):
+        st.caption("Enviaremos um código para o seu e-mail. Se o e-mail tiver conta, ele chega em alguns minutos.")
+        email = st.text_input("E-mail da conta", key="rec_email", autocomplete="email")
+        if st.form_submit_button("Enviar código", use_container_width=True, disabled=bloqueado):
+            try:
+                LOJA.enviar_recuperacao(email)
+            except (A.ErroAutenticacao, A.ErroArmazenamento) as e:
+                st.error(str(e))
+            else:
+                st.success("Pedido enviado. Confira a caixa de entrada e o spam.")
+    with st.form("redefinir"):
+        email = st.text_input("E-mail da conta", key="red_email", autocomplete="email")
+        codigo = st.text_input("Código recebido", key="red_codigo", autocomplete="one-time-code")
+        nova = st.text_input(f"Nova senha (mínimo {A.SENHA_MIN} caracteres)", type="password", key="red_senha",
+                             autocomplete="new-password")
+        if st.form_submit_button("Trocar a senha e entrar", type="primary", use_container_width=True, disabled=bloqueado):
+            with st.spinner("Conferindo o código…"):
+                try:
+                    st.session_state.usuario = LOJA.redefinir_senha(email, codigo, nova)
+                except (A.ErroAutenticacao, A.ErroArmazenamento) as e:
+                    st.session_state.falhas_login = st.session_state.get("falhas_login", []) + [time.time()]
+                    st.error(str(e))
+                    return
+            st.session_state.validado_em = time.time()
+            st.rerun()
+
+
+def sair() -> None:
+    u = st.session_state.get("usuario")
+    if u:
+        LOJA.sair(u)
+    for k in list(st.session_state.keys()):
+        if k not in ("falhas_login",):
+            del st.session_state[k]
+
+
+def falha_banco(e: Exception) -> None:
+    html_topo("Sem conexão", "Não foi possível falar com o banco de dados")
+    st.error(str(e))
+    c1, c2 = st.columns(2)
+    if c1.button("Tentar de novo", type="primary", use_container_width=True):
+        st.rerun()
+    if c2.button("Sair da conta", use_container_width=True):
+        sair()
+        st.rerun()
+    st.stop()
+
+
 def estado() -> dict:
-    """Estado da sessão. Se outra aba ou aparelho salvou depois, recarrega do banco antes de desenhar a tela:
+    """Estado da conta. Se outra aba ou aparelho salvou depois, recarrega do banco antes de desenhar a tela:
     como cada ação salva na hora, esta sessão não tem nada pendente nesse momento."""
-    v = A.versao()
-    if "S" not in st.session_state or st.session_state.get("versao") != v:
-        st.session_state.S, st.session_state.versao = A.carregar_com_versao()
+    u = st.session_state.usuario
+    try:
+        if time.time() - st.session_state.get("validado_em", 0) > VALIDAR_A_CADA:
+            LOJA.validar(u)  # a identidade vem do servidor de autenticação, nunca da URL ou do navegador
+            st.session_state.validado_em = time.time()
+        v = LOJA.versao(u)
+        if "S" not in st.session_state or (st.session_state.get("versao") != v and not st.session_state.get("pendente")):
+            st.session_state.S, st.session_state.versao = LOJA.carregar_com_versao(u)
+    except A.ErroAutenticacao as e:
+        sair()
+        st.session_state.aviso_login = str(e)
+        st.rerun()
+    except A.ErroArmazenamento as e:
+        if "S" not in st.session_state:
+            falha_banco(e)
+        st.warning("Sem conexão com o banco: mostrando os últimos dados carregados. O que você alterar agora "
+                   "será enviado quando a conexão voltar.")
     return st.session_state.S
 
 
 def salvar() -> None:
     """Grava só se ninguém salvou no meio; senão descarta esta ação e recarrega (nunca apaga o que a outra aba gravou)."""
+    u = st.session_state.usuario
     try:
-        st.session_state.versao = A.salvar(st.session_state.S, versao_esperada=st.session_state.get("versao"))
+        st.session_state.versao = LOJA.salvar(u, st.session_state.S, st.session_state.get("versao", 0))
+        st.session_state.pendente = False
     except A.Conflito:
-        st.session_state.S, st.session_state.versao = A.carregar_com_versao()
+        st.session_state.S, st.session_state.versao = LOJA.carregar_com_versao(u)
+        st.session_state.pendente = False
         st.session_state.aviso = ("alerta", "Dados atualizados em outra aba",
                                   "O app foi aberto em outra aba ou aparelho e salvou antes. Os dados foram recarregados: "
                                   "repita a última ação, se ela não aparecer.")
         st.rerun()
+    except A.ErroAutenticacao as e:
+        sair()
+        st.session_state.aviso_login = str(e)
+        st.rerun()
+    except A.ErroArmazenamento as e:
+        # mantém a alteração nesta tela e tenta de novo na próxima ação (a versão esperada continua a mesma)
+        st.session_state.pendente = True
+        st.session_state.aviso = ("erro", "Alteração ainda não salva", str(e))
 
+
+if LOJA is None:
+    with st.container():
+        tela_configuracao_pendente()
+    st.stop()
+
+if not st.session_state.get("usuario"):
+    if st.session_state.get("aviso_login"):
+        st.warning(st.session_state.pop("aviso_login"))
+    with st.container():  # bloco próprio: o formulário de login não é reaproveitado pela tela seguinte
+        tela_entrada()
+    st.stop()
+
+if st.session_state.get("pendente"):
+    st.warning("Há uma alteração ainda não salva por falta de conexão.")
+    if st.button("Tentar salvar agora", type="primary"):
+        salvar()
+        st.rerun()
 
 S = estado()
 R.definir_fuso(S["profile"].get("fuso"))
@@ -166,7 +351,7 @@ def cartao_exercicio(ex_id: str, com_rec: bool, presc: dict | None = None) -> No
 def cronometro(fim_ms: int, total_s: int = 0, proximo: str = "") -> None:
     """Descanso entre séries: contagem regressiva com barra, vibra no fim (quando o aparelho permite)."""
     components.html(f"""
-<div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif;background:#1c1c1f;border:1px solid rgba(240,54,74,.45);color:#f5f5f7;border-radius:18px;padding:12px 18px 14px">
+<div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,system-ui,sans-serif;background:#1c1c1f;border:1px solid rgba(240,54,74,.45);color:#f5f5f7;border-radius:18px;padding:12px 18px 14px">
 <div style="display:flex;justify-content:space-between;align-items:baseline">
 <span style="font-size:13px;color:#a1a1a6;font-weight:600;letter-spacing:.04em;text-transform:uppercase">Descanso</span>
 <b id="t" style="font-size:30px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">0:00</b></div>
@@ -184,7 +369,7 @@ el.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');setTimeout(f,25
 def cronometro_sessao(inicio_ms: int, plano_min: int | None) -> None:
     """Relógio da sessão que anda sozinho no navegador, sem recarregar o app."""
     components.html(f"""
-<div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif;display:flex;justify-content:space-between;align-items:center;color:#f5f5f7;padding:2px 2px">
+<div style="font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Segoe UI',Roboto,system-ui,sans-serif;display:flex;justify-content:space-between;align-items:center;color:#f5f5f7;padding:2px 2px">
 <span style="font-size:13px;color:#a1a1a6">Tempo de treino{f" · plano ≈ {plano_min} min" if plano_min else ""}</span>
 <b id="t" style="font-size:28px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums">0:00</b></div>
 <script>
@@ -342,7 +527,12 @@ def resultado_avaliacao():
     if n == "urgent":
         return ("erro", "PARE — procure atendimento médico urgente", "Sinal de alerta registrado. Os treinos ficam bloqueados.")
     if n == "caution":
-        return ("alerta", "Avaliação profissional recomendada", "Há dor, inchaço ou dificuldade para caminhar registrados. Os exercícios de pernas ficam bloqueados enquanto isso.")
+        partes = []
+        if R.sintomas(S):
+            partes.append("Há dor, inchaço ou dificuldade para caminhar registrados: os exercícios de pernas ficam bloqueados enquanto isso.")
+        if R.lesao_em_recuperacao(S):
+            partes.append("Há lesão muscular em recuperação (ou não se sabe): as cargas não progridem e cada treino pede confirmação.")
+        return ("alerta", "Avaliação profissional recomendada", " ".join(partes))
     if n == "noclear":
         return ("alerta", "Liberação pendente", "Sem liberação profissional registrada para musculação. Recomenda-se obtê-la antes de começar.")
     return ("ok", "Avaliação registrada", "Plano completo disponível: membros superiores, membros inferiores e cardio.")
@@ -623,7 +813,7 @@ def tela_treinos() -> None:
     with st.container():
         if d == t:
             if st.session_state.get("pre_inicio"):
-                aviso("alerta", "Antes de começar", "Há dor, inchaço ou liberação pendente registrados. Faça só o que não causa dor e interrompa ao primeiro sintoma.")
+                aviso("alerta", "Antes de começar", "Há dor, inchaço, lesão em recuperação ou liberação pendente registrados. Faça só o que não causa dor e interrompa ao primeiro sintoma.")
                 ciente = st.checkbox("Entendi e vou interromper ao primeiro sintoma.")
                 c1, c2 = st.columns(2)
                 if c1.button("Iniciar assim mesmo", disabled=not ciente, type="primary"):
@@ -706,7 +896,9 @@ def editar_treino(pl: dict) -> None:
     forca = [it for it in pl["itens"] if "duracao" not in it]
     cardio = next((it["id"] for it in pl["itens"] if "duracao" in it and D.EXERCICIOS[it["id"]].get("cardio")), None)
     with st.expander(":material/edit: Editar exercícios deste treino" + (" (personalizado)" if pl["personalizado"] else "")):
-        opcoes = [x for x, e in D.EXERCICIOS.items() if e["tipo"] == "carga" and e["grupo"] != "Recuperação"]
+        atuais = [it["id"] for it in forca]
+        opcoes = [x for x, e in D.EXERCICIOS.items() if e["tipo"] == "carga" and e["grupo"] != "Recuperação"
+                  and (x in atuais or not P.motivo_bloqueio(S, x, pl["semana"]))]
         with st.form("ed_" + chave):
             sel = st.multiselect("Exercícios de musculação, na ordem do treino", opcoes, default=[it["id"] for it in forca],
                                  format_func=R.nome_ex)
@@ -1008,7 +1200,9 @@ def bloco_cardio(i: int, se: dict, e: dict, sid: str) -> None:
 
 
 def detalhes_exercicio(i: int, se: dict, e: dict, sid: str) -> None:
-    alts = [x for x in D.ALTERNATIVAS.get(se["id"], []) if x in D.EXERCICIOS and R.status_ex(S, x)[0]]
+    semana = S["active"].get("semana") or 1
+    # a troca só oferece o que o plano também aceitaria: limitações, proibidos e sintomas de hoje valem aqui também
+    alts = [x for x in D.ALTERNATIVAS.get(se["id"], []) if x in D.EXERCICIOS and not P.motivo_bloqueio(S, x, semana)]
     if alts and not any(x["done"] for x in se["sets"]) and not e.get("cardio"):
         tr = st.selectbox("Aparelho ocupado? Trocar por", [""] + alts,
                           format_func=lambda x: "Manter este exercício" if not x else R.nome_ex(x), key=f"sw{sid}")
@@ -1081,7 +1275,7 @@ def remover_exercicio(i: int, se: dict, e: dict, sid: str) -> None:
 # configuração comum dos gráficos: fundo transparente, eixos discretos e fonte do sistema
 VEGA_CONFIG = {
     "background": None, "view": {"stroke": None},
-    "font": "-apple-system, BlinkMacSystemFont, 'SF Pro Text', Inter, system-ui, sans-serif",
+    "font": "-apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', Roboto, system-ui, sans-serif",
     "axis": {"labelColor": "#a1a1a6", "titleColor": "#a1a1a6", "gridColor": "rgba(255,255,255,0.07)",
              "domainColor": "rgba(255,255,255,0.12)", "tickColor": "rgba(255,255,255,0.12)", "labelFontSize": 11,
              "titleFontSize": 11, "titleFontWeight": 500},
@@ -1335,6 +1529,13 @@ def tela_habitos() -> None:
 def tela_perfil() -> None:
     p = S["profile"]
     cabecalho("Perfil", "Seus dados, segurança e preferências")
+    with st.container(border=True):
+        u = st.session_state.usuario
+        html_md(f"<p class='fl-rotulo'>Conta</p><p style='margin:0'>{html.escape(u['email'])}</p>")
+        st.caption(nota_banco())
+        if st.button("Sair da conta", icon=":material/logout:", use_container_width=True):
+            sair()
+            st.rerun()
     with st.form("perfil"):
         nome = st.text_input("Nome (opcional)", p.get("nome", ""))
         c1, c2 = st.columns(2)
@@ -1502,13 +1703,19 @@ def tela_perfil() -> None:
                                           + (f" {descartados} registro(s) malformado(s) foram ignorados." if descartados else ""))
                 st.rerun()
     if st.session_state.get("conf_reset"):
-        st.warning("Isso apaga todos os registros deste computador.")
+        st.warning("Isso apaga todos os registros **desta conta**: treinos, pesagens, hábitos e perfil. "
+                   "Baixe a cópia de segurança acima antes, se quiser guardá-los.")
+        ciente = st.checkbox("Entendi que não dá para desfazer", key="ciente_apagar")
         c1, c2 = st.columns(2)
-        if c1.button("Apagar tudo"):
-            st.session_state.S = R.padrao()
-            st.session_state.conf_reset = False
-            salvar()
-            st.rerun()
+        if c1.button("Apagar tudo", type="primary", disabled=not ciente):
+            try:
+                LOJA.apagar(st.session_state.usuario)  # só a linha desta conta (garantido também pelo RLS)
+            except A.ErroArmazenamento as e:
+                st.error(str(e))
+            else:
+                st.session_state.S, st.session_state.versao = R.padrao(), 0
+                st.session_state.conf_reset = False
+                st.rerun()
         if c2.button("Cancelar"):
             st.session_state.conf_reset = False
             st.rerun()

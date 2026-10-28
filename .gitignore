@@ -3,3 +3,6 @@ __pycache__/
 .pytest_cache/
 .venv/
 *.db
+secrets.toml
+.streamlit/secrets.toml
+backup-*.json
