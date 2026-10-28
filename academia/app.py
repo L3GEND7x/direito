@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import time
+import urllib.parse
 import urllib.request
 from datetime import datetime
 from pathlib import Path
@@ -1644,6 +1645,25 @@ def tela_habitos() -> None:
 
 
 # ------------------------------------------------------------------ PERFIL
+TEXTO_CONVITE = "Estou usando o Foco Leve para organizar meus treinos e acompanhar minha evolução. Experimente:"
+
+
+def compartilhar() -> None:
+    """Convite para o app: só o link público, nunca dados da conta."""
+    url = endereco_do_app()
+    with st.container(border=True):
+        html_md("<p class='fl-rotulo'>Convide alguém</p>")
+        if not url:
+            st.caption("O link do app ainda não está configurado (site_url em Secrets).")
+            return
+        components.html(ui.botao_compartilhar(url, TEXTO_CONVITE), height=82)
+        st.link_button("Enviar pelo WhatsApp", "https://wa.me/?text=" + urllib.parse.quote(f"{TEXTO_CONVITE} {url}"),
+                       icon=":material/chat:", use_container_width=True)
+        st.caption("Ou copie o link:")
+        st.code(url, language=None)
+        st.caption("Só o link do app é compartilhado. Seus dados continuam visíveis apenas para você.")
+
+
 def tela_perfil() -> None:
     p = S["profile"]
     cabecalho("Perfil", "Seus dados, segurança e preferências")
@@ -1654,6 +1674,7 @@ def tela_perfil() -> None:
         if st.button("Sair da conta", icon=":material/logout:", use_container_width=True):
             sair()
             st.rerun()
+    compartilhar()
     with st.form("perfil"):
         nome = st.text_input("Nome (opcional)", p.get("nome", ""))
         c1, c2 = st.columns(2)
