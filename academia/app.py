@@ -6,16 +6,35 @@ No celular: streamlit run app.py --server.address 0.0.0.0  e abra http://IP-DO-C
 from __future__ import annotations
 
 import html
+import importlib
 import json
 import os
 import re
+import sys
 import time
 import urllib.request
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+
+# No Streamlit Cloud, uma atualização do repositório nem sempre reinicia o processo: este arquivo roda na versão
+# nova, mas os módulos do app importados antes continuam na versão antiga (e falta o que foi acrescentado neles).
+# Antes de importá-los, recarrega os que mudaram no disco — na ordem das dependências.
+for _nome in ("foco_leve.dados", "foco_leve.regras", "foco_leve.plano", "foco_leve.evolucao",
+              "foco_leve.armazenamento", "ui"):
+    _mod = sys.modules.get(_nome)
+    if _mod is None:
+        continue  # ainda não importado: o import abaixo já lê a versão do disco
+    try:
+        _mtime = Path(_mod.__file__).stat().st_mtime
+    except (OSError, TypeError):
+        continue
+    if getattr(_mod, "_fl_mtime", None) != _mtime:  # mudou, ou foi importado por uma versão anterior deste arquivo
+        _mod = importlib.reload(_mod)
+        _mod._fl_mtime = _mtime
 
 import ui
 from foco_leve import armazenamento as A
@@ -24,6 +43,10 @@ from foco_leve import evolucao as E
 from foco_leve import plano as P
 from foco_leve import regras as R
 from foco_leve.regras import br, brx, fmt_d, fmt_dy, num, ok
+
+for _mod in (ui, A, D, E, P, R):  # carregados agora: marca a versão do disco
+    if not hasattr(_mod, "_fl_mtime"):
+        _mod._fl_mtime = Path(_mod.__file__).stat().st_mtime
 
 st.set_page_config(page_title="Foco Leve", page_icon="💪", layout="centered")
 

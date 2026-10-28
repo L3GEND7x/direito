@@ -313,3 +313,17 @@ def test_secrets_salvos_com_o_app_no_ar_valem_sem_reiniciar(monkeypatch):
     monkeypatch.setenv("SUPABASE_ANON_KEY", "anon-teste")
     at = abrir()  # mesmo processo, sem limpar cache
     assert not at.error and any(x.key == "login_email" for x in at.text_input)
+
+
+def test_atualizacao_sem_reiniciar_recarrega_os_modulos(monkeypatch):
+    """Streamlit Cloud: app.py novo com o módulo ui antigo na memória (sem AJUSTES_PAGINA) não pode quebrar."""
+    import ui
+    abrir()
+    monkeypatch.delattr(ui, "AJUSTES_PAGINA")  # o "ui" antigo, de antes da atualização
+    monkeypatch.delattr(ui, "_fl_mtime")       # importado por uma versão anterior do app.py
+    at = abrir()
+    assert not at.exception and hasattr(ui, "AJUSTES_PAGINA")
+    monkeypatch.delattr(ui, "AJUSTES_PAGINA")
+    ui._fl_mtime = 0                            # arquivo mudou no disco depois da carga
+    at = abrir()
+    assert not at.exception and hasattr(ui, "AJUSTES_PAGINA")
