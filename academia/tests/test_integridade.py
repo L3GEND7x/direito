@@ -14,29 +14,31 @@ def db(tmp_path):
 
 
 def test_versao_e_conflito_entre_abas(db):
-    S = R.padrao()
-    v1 = A.salvar(S, caminho=db)
-    aba1, va = A.carregar_com_versao(caminho=db)
-    aba2, vb = A.carregar_com_versao(caminho=db)
-    assert va == vb == v1
+    loja, u = A.LojaSQLite(db), {"id": "u1"}
+    v1 = loja.salvar(u, R.padrao(), 0)
+    aba1, va = loja.carregar_com_versao(u)
+    aba2, vb = loja.carregar_com_versao(u)
+    assert va == vb == v1 == 1
     aba1["weights"].append({"id": "a", "date": "2026-10-01", "peso": 110.0})
-    v2 = A.salvar(aba1, caminho=db, versao_esperada=va)
-    assert v2 == v1 + 1
+    assert loja.salvar(u, aba1, va) == 2
     aba2["habits"]["2026-10-01"] = {"agua": 5}
     with pytest.raises(A.Conflito):  # a segunda aba não apaga a pesagem da primeira
-        A.salvar(aba2, caminho=db, versao_esperada=vb)
-    assert A.carregar(caminho=db)["weights"][0]["peso"] == 110.0
+        loja.salvar(u, aba2, vb)
+    assert loja.carregar_com_versao(u)[0]["weights"][0]["peso"] == 110.0
 
 
 def test_banco_antigo_sem_coluna_de_versao(db):
     import sqlite3
     con = sqlite3.connect(db)
     con.execute("CREATE TABLE estado (usuario TEXT PRIMARY KEY, dados TEXT NOT NULL, atualizado TEXT)")
-    con.execute("INSERT INTO estado(usuario, dados) VALUES('padrao', ?)", (json.dumps({"profile": {"nome": "Ana"}, "sessions": [], "weights": []}),))
+    con.execute("INSERT INTO estado(usuario, dados) VALUES('u1', ?)", (json.dumps({"profile": {"nome": "Ana"}, "sessions": [], "weights": []}),))
     con.commit(); con.close()
-    S, v = A.carregar_com_versao(caminho=db)
+    loja = A.LojaSQLite(db)
+    S, v = loja.carregar_com_versao({"id": "u1"})
     assert S["profile"]["nome"] == "Ana" and v == 0
-    assert A.salvar(S, caminho=db, versao_esperada=0) == 1
+    assert loja.salvar({"id": "u1"}, S, 0) == 1  # a linha antiga (versão 0) é atualizada, não duplicada
+    with pytest.raises(A.Conflito):
+        loja.salvar({"id": "u1"}, S, 0)
 
 
 def test_copia_malformada_e_descartada_sem_derrubar():
