@@ -13,7 +13,7 @@ os.environ["FOCO_LEVE_MODO_LOCAL"] = "1"
 os.environ.pop("SUPABASE_URL", None)
 os.environ.pop("SUPABASE_ANON_KEY", None)
 APP = os.path.join(os.path.dirname(__file__), "..", "app.py")
-ABAS = ["Início", "Treinos", "Evolução", "Hábitos", "Perfil"]
+ABAS = ["Início", "Treino", "Evolução", "Meu plano", "Perfil"]
 
 from foco_leve import armazenamento as A  # noqa: E402 (depois de definir o banco de teste)
 from foco_leve import regras as R  # noqa: E402
@@ -79,11 +79,11 @@ def test_todas_as_abas_e_um_treino_com_retomada():
     S = at.session_state["S"]
     assert S["profile"]["confirmado"] and S["profile"]["pesoInicial"] == 112.5 and [w["peso"] for w in S["weights"]] == [112.5]
     assert any("Avaliação registrada" in s.value for s in at.success)
-    for aba in ["Treinos", "Evolução", "Hábitos", "Perfil", "Início"]:
+    for aba in ["Treino", "Evolução", "Meu plano", "Perfil", "Início"]:
         at.radio(key="aba").set_value(aba).run()
         assert not at.exception, aba
     # treino de hoje garantido (hoje pode ser dia de descanso na agenda)
-    at.radio(key="aba").set_value("Treinos").run()
+    at.radio(key="aba").set_value("Treino").run()
     [s for s in at.selectbox if s.label == "Trocar o treino de hoje"][0].set_value("A").run()
     botao(at, "Iniciar este treino").click().run()
     assert not at.exception and at.session_state["S"]["active"]["workout"] == "A"
@@ -98,7 +98,7 @@ def test_todas_as_abas_e_um_treino_com_retomada():
     assert abs(fim - (time.time() + desc)) < 15 and at.session_state["descanso_total"] == desc
     # recarregar a página: precisa entrar de novo e a sessão continua de onde parou
     at = entrar(abrir(), "ana@exemplo.com")
-    at.radio(key="aba").set_value("Treinos").run()
+    at.radio(key="aba").set_value("Treino").run()
     assert not at.exception and at.session_state["S"]["active"]["ex"][0]["sets"][0]["done"]
     assert any(b.label == "Concluir série 2" for b in at.button)
     botao(at, "Finalizar treino").click().run()
@@ -126,8 +126,8 @@ def test_isolamento_entre_contas():
     # cada conta tem a própria rotação de exercícios, estável entre acessos
     sa, sb = a2.session_state["S"]["semente"], b2.session_state["S"]["semente"]
     assert sa and sb and sa != sb and entrar(abrir(), "carla@exemplo.com").session_state["S"]["semente"] == sa
-    a2.radio(key="aba").set_value("Treinos").run()
-    assert not a2.exception and any("montado para você" in e.label for e in a2.expander)
+    a2.radio(key="aba").set_value("Meu plano").run()
+    assert not a2.exception and any("Como o seu treino é montado" in e.label for e in a2.expander)
     a2.radio(key="aba").set_value("Perfil").run()
     assert any("Peso atual: 101,1 kg" in c.value for c in a2.caption)
 
@@ -375,16 +375,15 @@ def test_objetivos_em_cartoes_biblioteca_e_acompanhamento():
     primeiro_acesso(at)
     p = at.session_state["S"]["profile"]
     assert p["objetivos"] == ["emagrecimento", "gluteos"] and p["equipamentos"] == ["halteres", "corpo"]
-    # nenhum objetivo: o formulário do Perfil recusa
-    at.radio(key="aba").set_value("Perfil").run()
-    at.button_group(key="perf_obj").set_value([])
-    botao(at, "Salvar perfil").click().run()
-    assert any("pelo menos um objetivo" in e.value for e in at.error)
-    # Treinos: o plano só usa o que a pessoa tem, e a biblioteca mostra o motivo do que ficou de fora
-    at.radio(key="aba").set_value("Treinos").run()
+    # Meu plano: nenhum objetivo é recusado; a explicação do plano e a biblioteca ficam aqui
+    at.radio(key="aba").set_value("Meu plano").run()
     assert not at.exception
     tudo = textos(at.main)
     assert "Objetivo: Emagrecimento + Glúteos" in tudo and "Biblioteca de exercícios" in tudo
+    at.button_group(key="plano_obj").set_value([])
+    botao(at, "Salvar e recalcular").click().run()
+    assert any("pelo menos um objetivo" in e.value for e in at.error)
+    at.button_group(key="plano_obj").set_value(["emagrecimento", "gluteos"])
     at.selectbox(key="bib_grupo").set_value("Peitoral").run()
     assert "Supino na máquina · fora do seu plano" in [e.label for e in at.expander]
     assert "Flexão de braços inclinada (mãos no banco)" in [e.label for e in at.expander]
@@ -393,10 +392,27 @@ def test_objetivos_em_cartoes_biblioteca_e_acompanhamento():
     assert not at.exception and "Ainda não há treinos concluídos" in textos(at.main)
 
 
+def test_meu_plano_recalcula_e_sessao_antiga_com_aba_antiga():
+    at = criar_conta(abrir(), "plano@exemplo.com")
+    primeiro_acesso(at)
+    at.radio(key="aba").set_value("Meu plano").run()
+    at.button_group(key="plano_obj").set_value(["hipertrofia"])
+    [s for s in at.selectbox if s.label == "Dias de treino por semana"][0].set_value(3)
+    botao(at, "Salvar e recalcular").click().run()
+    assert not at.exception
+    p = at.session_state["S"]["profile"]
+    assert p["objetivos"] == ["hipertrofia"] and p["dias"] == 3
+    assert list(at.session_state["S"]["schedule"].values()).count("FULL") == 3  # 3 dias + foco muscular = corpo inteiro
+    assert any("Plano recalculado" in str(x.value) for x in at.success)
+    # Perfil não repete os campos do plano
+    at.radio(key="aba").set_value("Perfil").run()
+    assert not [s for s in at.selectbox if s.label == "Dias de treino por semana"]
+
+
 def test_series_iguais_medidas_pdf_e_instalar():
     at = criar_conta(abrir(), "rapida@exemplo.com")
     primeiro_acesso(at)
-    at.radio(key="aba").set_value("Treinos").run()
+    at.radio(key="aba").set_value("Treino").run()
     [s for s in at.selectbox if s.label == "Trocar o treino de hoje"][0].set_value("A").run()
     botao(at, "Iniciar este treino").click().run()
     campo(at, "Carga da série 1 (kg)").input("30")
@@ -427,7 +443,7 @@ def test_series_iguais_medidas_pdf_e_instalar():
 def test_ficha_no_treino_meta_de_carga_e_lembrete_de_copia():
     at = criar_conta(abrir(), "metas@exemplo.com")
     primeiro_acesso(at)
-    at.radio(key="aba").set_value("Treinos").run()
+    at.radio(key="aba").set_value("Treino").run()
     [s for s in at.selectbox if s.label == "Trocar o treino de hoje"][0].set_value("A").run()
     botao(at, "Iniciar este treino").click().run()
     assert any(s.label == "Aparelho ocupado ou desconfortável? Trocar por" for s in at.selectbox)

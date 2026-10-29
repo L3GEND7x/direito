@@ -260,7 +260,7 @@ def seguranca(S: dict) -> str:
 def status_ex(S: dict, ex_id: str) -> tuple[bool, str]:
     e = get_ex(S, ex_id)
     if not e["ativo"]:
-        return False, "Desativado no plano (Perfil → Plano de exercícios)."
+        return False, "Desativado no plano (Meu plano → Ajustes por exercício)."
     if e.get("requer") == "pernas" and sintomas(S):
         return False, "Bloqueado hoje: há dor, inchaço ou dificuldade para caminhar registrados. Se não passar, procure avaliação."
     return True, ""

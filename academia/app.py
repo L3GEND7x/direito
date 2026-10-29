@@ -605,7 +605,7 @@ def campos_objetivo(chave: str, explicar: bool = True) -> tuple:
     objs = st.pills("Objetivo · escolha um ou mais (combinados valem juntos)", list(O.OBJETIVOS), selection_mode="multi",
                     default=O.objetivos(S), key=f"{chave}_obj",
                     format_func=lambda k: f"{O.OBJETIVOS[k]['icone']} {O.OBJETIVOS[k]['nome']}")
-    if explicar:  # dentro de outro expander (Início) não cabe um expander: a explicação fica no Perfil e nos Treinos
+    if explicar:  # dentro de outro expander não cabe um expander
         with st.expander("O que muda no plano com cada objetivo"):
             for o in O.OBJETIVOS.values():
                 st.markdown(f"**{o['nome']}** — {o['resumo']}  \n<small>{html.escape(o['como'])}</small>", unsafe_allow_html=True)
@@ -631,63 +631,13 @@ def validar_objetivo(objs, equips, prios) -> tuple[dict, list[str]]:
             "prioridades": list(prios or [])}, erros
 
 
-def editar_dados() -> None:
-    """Edição rápida no Início: muda o perfil e recalcula o plano futuro, sem tocar no histórico."""
-    p = S["profile"]
-    with st.expander(":material/edit: Editar meus dados e recalcular o plano"):
-        with st.form("dados_inicio"):
-            # uma linha de colunas por par de campos: no celular a ordem continua lógica
-            c1, c2 = st.columns(2)
-            peso_hoje = c1.text_input("Peso de hoje (kg, opcional)", placeholder="Ex.: 113,4")
-            meta = c2.text_input("Peso desejado (kg)", brx(p["pesoMeta"]))
-            c1, c2 = st.columns(2)
-            ini = c1.text_input("Peso inicial (kg)", brx(p["pesoInicial"]))
-            alt = c2.text_input("Altura (cm)", brx(p["altura"]))
-            c1, c2 = st.columns(2)
-            idade = c1.text_input("Idade (anos)", brx(p["idade"]))
-            nivel_atual = next((n for n in NIVEIS if n.lower()[:5] == str(p.get("nivel") or "").lower()[:5]), "Iniciante")
-            nivel = c2.selectbox("Nível de experiência", NIVEIS, index=NIVEIS.index(nivel_atual))
-            c1, c2 = st.columns(2)
-            dias = c1.selectbox("Dias de treino por semana", list(range(1, 8)), index=max(0, min(6, int(p["dias"]) - 1)))
-            tempos = sorted(set(TEMPOS) | {int(p.get("tempoMax") or 90)})
-            tempo = c2.selectbox("Tempo máximo por treino (min)", tempos, index=tempos.index(int(p.get("tempoMax") or 90)))
-            lim = st.text_area("Limitações, dores e restrições", p.get("limitacao", ""),
-                               placeholder="Ex.: dor no joelho direito ao agachar; hérnia lombar")
-            objs, equips, prios = campos_objetivo("ini", explicar=False)
-            st.caption("O plano usa estes dados para escolher exercícios, séries, cardio e duração. Os treinos já registrados não mudam.")
-            if st.form_submit_button("Salvar e recalcular", type="primary"):
-                novos, erros = validar_perfil({"pesoMeta": meta, "pesoInicial": ini, "altura": alt, "idade": idade})
-                extra, erros_obj = validar_objetivo(objs, equips, prios)
-                novos.update(extra)
-                erros += erros_obj
-                pv = num(peso_hoje)
-                if peso_hoje.strip() and (not ok(pv) or not 30 <= pv <= 300):
-                    erros.append("O peso de hoje deve ficar entre 30 e 300 kg.")
-                if erros:
-                    st.error(" ".join(erros))
-                    return
-                novos.update({"dias": int(dias), "tempoMax": int(tempo), "nivel": nivel, "limitacao": lim.strip(), "confirmado": True})
-                agenda_antes = dict(S["schedule"])
-                P.atualizar_perfil(S, novos)
-                if peso_hoje.strip():
-                    S["weights"] = [x for x in S["weights"] if x["date"] != t]
-                    S["weights"].append({"id": R.novo_id(), "date": t, "peso": round(pv, 1), "cintura": None,
-                                         "cond": "Registrado no Início", "obs": ""})
-                salvar()
-                pl = P.plano_do_dia(S, t)
-                msg = f"Hoje: {pl['nome']}" + (f", ≈ {pl['total']} min ({texto_etapas(pl)})." if pl["wk"] != "OFF" else ".")
-                if S["schedule"] != agenda_antes:
-                    msg += f" Agenda refeita para {dias} dia(s) por semana."
-                st.session_state.aviso = ("ok", "Plano recalculado", msg + " O histórico foi mantido.")
-                st.rerun()
-
-
 # ------------------------------------------------------------------ cabeçalho e navegação
-ABAS = ["Início", "Treinos", "Evolução", "Hábitos", "Perfil"]
-ICONES = {"Início": ":material/home:", "Treinos": ":material/fitness_center:", "Evolução": ":material/monitoring:",
-          "Hábitos": ":material/water_drop:", "Perfil": ":material/person:"}
-if "aba" not in st.session_state:
-    st.session_state.aba = "Início"
+ABAS = ["Início", "Treino", "Evolução", "Meu plano", "Perfil"]
+ICONES = {"Início": ":material/home:", "Treino": ":material/fitness_center:", "Evolução": ":material/monitoring:",
+          "Meu plano": ":material/event_note:", "Perfil": ":material/person:"}
+ABAS_ANTIGAS = {"Treinos": "Treino", "Hábitos": "Evolução"}  # sessões abertas antes da troca de nomes
+if st.session_state.get("aba") not in ABAS:
+    st.session_state.aba = ABAS_ANTIGAS.get(st.session_state.get("aba"), "Início")
 if st.session_state.get("_ir"):
     st.session_state.aba = st.session_state.pop("_ir")
 # barra de abas fixa no rodapé (posicionada pelo tema.css)
@@ -907,7 +857,7 @@ def tela_inicio() -> None:
         capa([it["id"] for it in pl["itens"]] or ["esteira_caminhada"],
              f"HOJE · SEMANA {pl['semana']} DE {D.SEMANAS_PLANO}", pl["nome"], grupos_do_treino(pl) or pl["obj"], ficha)
         if S["active"]:
-            st.button("Continuar treino", type="primary", on_click=ir, args=("Treinos",), use_container_width=True,
+            st.button("Continuar treino", type="primary", on_click=ir, args=("Treino",), use_container_width=True,
                       key="acao_principal", icon=":material/play_arrow:")
         elif R.feito_em(S, t):
             st.success("Treino de hoje concluído. Bom trabalho: agora é recuperar bem.")
@@ -963,7 +913,8 @@ def tela_inicio() -> None:
     checkin()
     rv = R.recuperacao(S)
     st.caption(f"Recuperação: {rv['txt']} — {rv['detalhe']}")
-    editar_dados()
+    st.button("Ajustar meu plano", icon=":material/tune:", on_click=ir, args=("Meu plano",), use_container_width=True,
+              help="Objetivo, dias, tempo, nível, equipamentos e limitações")
 
 
 def peso_semanal() -> None:
@@ -1072,14 +1023,14 @@ def tentar_iniciar(wk: str) -> None:
     elif R.seguranca(S) in ("caution", "noclear") and wk != "REC" and not st.session_state.get("ciente"):
         st.session_state.dia_sel = t  # a confirmação aparece no cartão de hoje
         st.session_state.pre_inicio = wk
-        st.session_state._ir = "Treinos"
+        st.session_state._ir = "Treino"
         st.rerun()
     else:
         R.iniciar_sessao(S, wk)
         st.session_state.pre_inicio = None
         st.session_state.ciente = False
         salvar()
-        st.session_state._ir = "Treinos"
+        st.session_state._ir = "Treino"
     st.rerun()
 
 
@@ -1096,7 +1047,7 @@ def tela_treinos() -> None:
     ws = R.inicio_semana(t)
     if "dia_sel" not in st.session_state:
         st.session_state.dia_sel = t
-    cabecalho("Treinos", f"Semana de {fmt_d(ws)} a {fmt_d(R.add_dias(ws, 6))}")
+    cabecalho("Treino", f"Semana de {fmt_d(ws)} a {fmt_d(R.add_dias(ws, 6))}")
     # faixa de dias rolável; a chave inclui o dia escolhido para o app poder mudar a seleção sozinho
     dias = R.dias_da_semana(ws)
 
@@ -1108,9 +1059,7 @@ def tela_treinos() -> None:
     if sel != st.session_state.dia_sel:
         st.session_state.dia_sel = sel
         st.rerun()
-    sp = P.semana_do_programa(S)
-    pw = sp["semana"]
-    fi, fase = P.fase_da_semana(pw)
+    pw = P.semana_do_programa(S)["semana"]
     d = st.session_state.dia_sel
     wk = R.treino_do_dia(S, d)
     pl = P.plano_do_dia(S, d, pw)
@@ -1129,13 +1078,8 @@ def tela_treinos() -> None:
     if pl["bloqueados"]:
         st.warning("**Fora do plano (segurança, equipamento ou nível):**  \n"
                    + "  \n".join(f"{R.nome_ex(x)}: {m}" for x, m in pl["bloqueados"]))
-    with st.expander(":material/tune: Como este treino foi montado para você"):
-        st.markdown("\n".join(f"- {x}" for x in P.resumo_personalizacao(S, pw)))
-        for o in O.objetivos(S):
-            st.caption(f"{O.OBJETIVOS[o]['nome']}: {O.OBJETIVOS[o]['como']}")
-        st.caption("A escolha dos exercícios também segue uma ordem própria da sua conta, que muda a cada semana. "
-                   "Mudou objetivo, equipamentos, peso, nível, dias, tempo ou limitações? Atualize no Perfil ou em "
-                   "“Editar meus dados” no Início.")
+    st.button("Por que estes exercícios?", key="por_que", icon=":material/tune:", on_click=ir, args=("Meu plano",),
+              help="Objetivo, prioridades e regras do seu plano")
     observacoes("treinos", 2)
     with st.container():
         if d == t:
@@ -1176,25 +1120,6 @@ def tela_treinos() -> None:
         editar_treino(pl)
     for it in pl["itens"]:
         cartao_exercicio(it["id"], d == t, it)
-    html_md("<div class='fl-secao'>Plano de 20 semanas</div>")
-    with st.container(border=True):
-        html_md(f"<p class='fl-rotulo'>Semana {pw} de {D.SEMANAS_PLANO} · Fase {fi + 1} — {html.escape(fase['n'])}</p>")
-        st.caption(f"Objetivo da semana: {P.objetivo_da_semana(pw)} · Esforço: {fase['rpe']}")
-        if sp["concluido"]:
-            st.success("Plano de 20 semanas concluído. Gere o relatório em Evolução e combine a próxima etapa com o profissional.")
-        elif sp["historico"]:
-            ult = sp["historico"][-1]
-            (st.caption if ult["aprovada"] else st.warning)(f"Semana anterior (semana {ult['semana']}): {ult['motivo']}")
-        with st.expander("Como a semana do plano avança"):
-            st.markdown("A semana só avança quando a anterior foi bem executada e bem recuperada:\n"
-                        "- pelo menos 60% dos treinos planejados concluídos;\n"
-                        "- nenhuma sessão interrompida por sintoma nem dor moderada ou forte;\n"
-                        "- nenhum sinal de alerta, inchaço ou dor forte no check-in;\n"
-                        "- nenhuma sessão com recuperação ruim.\n\n"
-                        "Se algo disso falhar, a mesma semana se repete. Terminar o calendário não basta.")
-        with st.expander("Ver o plano das 20 semanas"):
-            ver_plano(pw, ws)
-    biblioteca(pw)
 
 
 def biblioteca(semana: int) -> None:
@@ -1724,13 +1649,16 @@ def grafico_barras(linhas: list[dict], y: str, titulo_y: str, ref: float | None 
 
 def tela_evolucao() -> None:
     cabecalho("Evolução", "Seus registros, sem estimativas inventadas")
-    aba_plano, aba_peso, aba_treinos, aba_conq, aba_rel = st.tabs(["Plano", "Peso", "Treinos", "Conquistas", "Relatório"])
+    aba_plano, aba_peso, aba_treinos, aba_hab, aba_conq, aba_rel = st.tabs(
+        ["Plano", "Peso", "Treinos", "Hábitos", "Conquistas", "Relatório"])
     with aba_plano:
         evolucao_plano()
     with aba_peso:
         evolucao_peso()
     with aba_treinos:
         evolucao_treinos()
+    with aba_hab:
+        tela_habitos()
     with aba_conq:
         evolucao_conquistas()
     with aba_rel:
@@ -2002,7 +1930,7 @@ def evolucao_relatorio() -> None:
 
 # ------------------------------------------------------------------ HÁBITOS
 def tela_habitos() -> None:
-    cabecalho("Hábitos", "Opcional · salva automaticamente")
+    st.caption("Hábitos do dia (opcional): salvam sozinhos.")
     dsel = st.date_input("Dia", value=R.pd(t), max_value=R.pd(t), format="DD/MM/YYYY").isoformat()
     x = S["habits"].get(dsel, {})  # o dia só é gravado quando algo for preenchido
     c1, c2 = st.columns(2)
@@ -2043,106 +1971,66 @@ def tela_habitos() -> None:
         st.markdown("- " + item)
 
 
-# ------------------------------------------------------------------ PERFIL
-TEXTO_CONVITE = "Estou usando o Foco Leve para organizar meus treinos e acompanhar minha evolução. Experimente:"
-
-
-def instalar() -> None:
-    """Como pôr o app na tela inicial (o navegador faz a instalação; o app só fornece ícone e nome)."""
-    with st.expander(":material/install_mobile: Instalar na tela inicial do celular"):
-        st.markdown("**Android (Chrome):** abra o app, toque nos três pontos (⋮) e em **Instalar app** ou "
-                    "**Adicionar à tela inicial**.  \n"
-                    "**iPhone (Safari):** toque em **Compartilhar** (quadrado com seta) e em **Adicionar à Tela de Início**.  \n"
-                    "O Foco Leve abre como um aplicativo, com ícone próprio e sem a barra do navegador.")
-        st.caption("Lembretes por notificação no celular não estão disponíveis: o Streamlit não permite enviar "
-                   "notificações. Os lembretes continuam aparecendo no Início quando você abre o app.")
-
-
-def compartilhar() -> None:
-    """Convite para o app: só o link público, nunca dados da conta."""
-    url = endereco_do_app()
-    with st.container(border=True):
-        html_md("<p class='fl-rotulo'>Convide alguém</p>")
-        if not url:
-            st.caption("O link do app ainda não está configurado (site_url em Secrets).")
-            return
-        components.html(ui.botao_compartilhar(url, TEXTO_CONVITE), height=82)
-        st.link_button("Enviar pelo WhatsApp", "https://wa.me/?text=" + urllib.parse.quote(f"{TEXTO_CONVITE} {url}"),
-                       icon=":material/chat:", use_container_width=True)
-        st.caption("Ou copie o link:")
-        st.code(url, language=None)
-        st.caption("Só o link do app é compartilhado. Seus dados continuam visíveis apenas para você.")
-
-
-def tela_perfil() -> None:
+def tela_meu_plano() -> None:
+    """Objetivo e preferências do plano, as 20 semanas, a agenda, a biblioteca e os ajustes por exercício."""
     p = S["profile"]
-    cabecalho("Perfil", "Seus dados, segurança e preferências")
-    with st.container(border=True):
-        u = st.session_state.usuario
-        html_md(f"<p class='fl-rotulo'>Conta</p><p style='margin:0'>{html.escape(u['email'])}</p>")
-        st.caption(nota_banco())
-        if st.button("Sair da conta", icon=":material/logout:", use_container_width=True):
-            sair()
-            st.rerun()
-    compartilhar()
-    instalar()
-    with st.form("perfil"):
-        nome = st.text_input("Nome (opcional)", p.get("nome", ""))
+    sp = P.semana_do_programa(S)
+    pw = sp["semana"]
+    fi, fase = P.fase_da_semana(pw)
+    ws = R.inicio_semana(t)
+    cabecalho("Meu plano", " + ".join(O.OBJETIVOS[o]["nome"] for o in O.objetivos(S)))
+    with st.form("meu_plano"):
+        objs, equips, prios = campos_objetivo("plano")
         c1, c2 = st.columns(2)
-        vals = {}
-        for n, (k, (lbl, lo, hi)) in enumerate(CAMPOS_PERFIL.items()):
-            vals[k] = (c1 if n % 2 == 0 else c2).text_input(lbl, brx(p[k]))
-        c1, c2 = st.columns(2)
-        local = c1.text_input("Local de treino", p.get("local", ""))
+        dias = c1.selectbox("Dias de treino por semana", list(range(1, 8)), index=max(0, min(6, int(p["dias"]) - 1)))
+        tempos = sorted(set(TEMPOS) | {int(p.get("tempoMax") or 90)})
+        tempo = c2.selectbox("Tempo máximo por treino (min)", tempos, index=tempos.index(int(p.get("tempoMax") or 90)))
         nivel_atual = next((n for n in NIVEIS if n.lower()[:5] == str(p.get("nivel") or "").lower()[:5]), "Iniciante")
-        nivel = c2.selectbox("Nível de experiência", NIVEIS, index=NIVEIS.index(nivel_atual))
-        objs, equips, prios = campos_objetivo("perf")
+        nivel = st.selectbox("Nível de experiência", NIVEIS, index=NIVEIS.index(nivel_atual))
+        lim = st.text_area("Limitações, dores e restrições", p.get("limitacao", ""),
+                           placeholder="Ex.: dor no joelho direito ao agachar; hérnia lombar")
         obj = st.text_input("Observação sobre o objetivo (opcional)", p.get("objetivo", ""))
-        fuso = st.selectbox("Fuso horário (define o que é “hoje” no app)", list(R.FUSOS),
-                            index=list(R.FUSOS).index(p.get("fuso") or R.FUSO_PADRAO), format_func=lambda k: R.FUSOS[k][0])
-        lim = st.text_area("Limitações e contraindicações", p.get("limitacao", ""))
-        if st.form_submit_button("Salvar perfil", type="primary"):
-            novos, erros = validar_perfil(vals)
-            extra, erros_obj = validar_objetivo(objs, equips, prios)
-            novos.update(extra)
-            erros += erros_obj
+        st.caption("Ao salvar, o plano é recalculado daqui para a frente. Os treinos já registrados não mudam.")
+        if st.form_submit_button("Salvar e recalcular", type="primary", use_container_width=True):
+            novos, erros = validar_objetivo(objs, equips, prios)
             if erros:
                 st.error(" ".join(erros))
             else:
-                novos.update({"nome": nome.strip(), "local": local.strip(), "nivel": nivel, "objetivo": obj.strip(), "fuso": fuso,
-                              "confirmado": True,
-                              "limitacao": lim.strip()})
+                agenda_antes = dict(S["schedule"])
+                novos.update({"dias": int(dias), "tempoMax": int(tempo), "nivel": nivel, "limitacao": lim.strip(),
+                              "objetivo": obj.strip(), "confirmado": True})
                 P.atualizar_perfil(S, novos)
                 salvar()
-                st.session_state.aviso = ("ok", "Perfil salvo", "O plano foi recalculado com os dados novos. O histórico foi mantido.")
+                pl = P.plano_do_dia(S, t)
+                msg = f"Hoje: {pl['nome']}" + (f", ≈ {pl['total']} min ({texto_etapas(pl)})." if pl["wk"] != "OFF" else ".")
+                if S["schedule"] != agenda_antes:
+                    msg += f" Agenda refeita para {dias} dia(s) por semana."
+                st.session_state.aviso = ("ok", "Plano recalculado", msg + " O histórico foi mantido.")
                 st.rerun()
-    if S["weights"]:
-        ult = R.pesos_ordenados(S)[-1]
-        st.caption(f"Peso atual: {br(ult['peso'])} kg (última pesagem, em {fmt_dy(ult['date'])}). "
-                   "Para registrar um peso novo, use Evolução ou “Editar meus dados” no Início; "
-                   "mudar o peso inicial aqui corrige também a pesagem do primeiro acesso.")
-    i0, i1 = R.imc(S, p["pesoInicial"]), R.imc(S, R.peso_atual(S))
-    st.caption(f"IMC inicial: {br(i0)} kg/m² · IMC atual: {br(i1)} kg/m² ({R.imc_categoria(i1)}). Indicador de triagem, não é diagnóstico.")
-
-    html_md("<div class='fl-secao'>Avaliação de segurança</div>")
-    if S["assess"]["done"] and not st.session_state.get("editar_aval"):
-        tipo, tit, txt = resultado_avaliacao()
-        aviso(tipo, tit, txt)
-        a = S["assess"]
-        yn = {"sim": "Sim", "nao": "Não", "nao_sei": "Não sei"}
-        st.dataframe(pd.DataFrame([
-            ("Dor articular", yn.get(a["dor"], "—")), ("Inchaço", yn.get(a["inchaco"], "—")), ("Dificuldade para caminhar", yn.get(a["caminhar"], "—")),
-            ("Diagnóstico médico", yn.get(a["diag"], "—") + (": " + a["diagTxt"] if a.get("diagTxt") else "")),
-            ("Liberação para musculação", yn.get(a["liberacao"], "—")), ("Lesão muscular em recuperação", yn.get(a["lesao"], "—")),
-            ("Observações", a.get("joelho") or "—")], columns=["Item", "Resposta"]), hide_index=True, use_container_width=True)
-        st.caption(f"Atualizada em {fmt_dy(a['date'])}" if a.get("date") else "")
-        if st.button("Atualizar avaliação"):
-            st.session_state.editar_aval = True
-            st.rerun()
-    else:
-        form_avaliacao()
-
-    html_md("<div class='fl-secao'>Plano de exercícios</div>")
+    with st.expander(":material/tune: Como o seu treino é montado"):
+        st.markdown("\n".join(f"- {x}" for x in P.resumo_personalizacao(S, pw)))
+        for o in O.objetivos(S):
+            st.caption(f"{O.OBJETIVOS[o]['nome']}: {O.OBJETIVOS[o]['como']}")
+    html_md("<div class='fl-secao'>Plano de 20 semanas</div>")
+    with st.container(border=True):
+        html_md(f"<p class='fl-rotulo'>Semana {pw} de {D.SEMANAS_PLANO} · Fase {fi + 1} — {html.escape(fase['n'])}</p>")
+        st.caption(f"Objetivo da semana: {P.objetivo_da_semana(pw)} · Esforço: {fase['rpe']}")
+        if sp["concluido"]:
+            st.success("Plano de 20 semanas concluído. Gere o relatório em Evolução e combine a próxima etapa com o profissional.")
+        elif sp["historico"]:
+            ult = sp["historico"][-1]
+            (st.caption if ult["aprovada"] else st.warning)(f"Semana anterior (semana {ult['semana']}): {ult['motivo']}")
+        with st.expander("Como a semana do plano avança"):
+            st.markdown("A semana só avança quando a anterior foi bem executada e bem recuperada:\n"
+                        "- pelo menos 60% dos treinos planejados concluídos;\n"
+                        "- nenhuma sessão interrompida por sintoma nem dor moderada ou forte;\n"
+                        "- nenhum sinal de alerta, inchaço ou dor forte no check-in;\n"
+                        "- nenhuma sessão com recuperação ruim.\n\n"
+                        "Se algo disso falhar, a mesma semana se repete. Terminar o calendário não basta.")
+        with st.expander("Ver o plano das 20 semanas"):
+            ver_plano(pw, ws)
+    biblioteca(pw)
+    html_md("<div class='fl-secao'>Ajustes por exercício</div>")
     st.caption("Desative um exercício para tirá-lo de todas as semanas, ou mude séries, repetições e descanso. "
                "Só o que você alterar substitui a prescrição da fase. O cardio é calculado pelo plano (mínimo de 30 min).")
     usados = []
@@ -2205,6 +2093,96 @@ def tela_perfil() -> None:
         if v != atual:
             S["schedule"][str(d)] = v
             salvar()
+
+# ------------------------------------------------------------------ PERFIL
+TEXTO_CONVITE = "Estou usando o Foco Leve para organizar meus treinos e acompanhar minha evolução. Experimente:"
+
+
+def instalar() -> None:
+    """Como pôr o app na tela inicial (o navegador faz a instalação; o app só fornece ícone e nome)."""
+    with st.expander(":material/install_mobile: Instalar na tela inicial do celular"):
+        st.markdown("**Android (Chrome):** abra o app, toque nos três pontos (⋮) e em **Instalar app** ou "
+                    "**Adicionar à tela inicial**.  \n"
+                    "**iPhone (Safari):** toque em **Compartilhar** (quadrado com seta) e em **Adicionar à Tela de Início**.  \n"
+                    "O Foco Leve abre como um aplicativo, com ícone próprio e sem a barra do navegador.")
+        st.caption("Lembretes por notificação no celular não estão disponíveis: o Streamlit não permite enviar "
+                   "notificações. Os lembretes continuam aparecendo no Início quando você abre o app.")
+
+
+def compartilhar() -> None:
+    """Convite para o app: só o link público, nunca dados da conta."""
+    url = endereco_do_app()
+    with st.container(border=True):
+        html_md("<p class='fl-rotulo'>Convide alguém</p>")
+        if not url:
+            st.caption("O link do app ainda não está configurado (site_url em Secrets).")
+            return
+        components.html(ui.botao_compartilhar(url, TEXTO_CONVITE), height=82)
+        st.link_button("Enviar pelo WhatsApp", "https://wa.me/?text=" + urllib.parse.quote(f"{TEXTO_CONVITE} {url}"),
+                       icon=":material/chat:", use_container_width=True)
+        st.caption("Ou copie o link:")
+        st.code(url, language=None)
+        st.caption("Só o link do app é compartilhado. Seus dados continuam visíveis apenas para você.")
+
+
+def tela_perfil() -> None:
+    p = S["profile"]
+    cabecalho("Perfil", "Seus dados, segurança e preferências")
+    with st.container(border=True):
+        u = st.session_state.usuario
+        html_md(f"<p class='fl-rotulo'>Conta</p><p style='margin:0'>{html.escape(u['email'])}</p>")
+        st.caption(nota_banco())
+        if st.button("Sair da conta", icon=":material/logout:", use_container_width=True):
+            sair()
+            st.rerun()
+    compartilhar()
+    instalar()
+    with st.form("perfil"):
+        nome = st.text_input("Nome (opcional)", p.get("nome", ""))
+        c1, c2 = st.columns(2)
+        vals = {}
+        for n, k in enumerate(("idade", "altura", "pesoInicial", "pesoMeta")):
+            vals[k] = (c1 if n % 2 == 0 else c2).text_input(CAMPOS_PERFIL[k][0], brx(p[k]))
+        c1, c2 = st.columns(2)
+        local = c1.text_input("Local de treino", p.get("local", ""))
+        fuso = c2.selectbox("Fuso horário (define o que é “hoje”)", list(R.FUSOS),
+                            index=list(R.FUSOS).index(p.get("fuso") or R.FUSO_PADRAO), format_func=lambda k: R.FUSOS[k][0])
+        st.caption("Objetivo, dias, tempo, nível e limitações ficam em **Meu plano**.")
+        if st.form_submit_button("Salvar perfil", type="primary"):
+            novos, erros = validar_perfil(vals)
+            if erros:
+                st.error(" ".join(erros))
+            else:
+                novos.update({"nome": nome.strip(), "local": local.strip(), "fuso": fuso, "confirmado": True})
+                P.atualizar_perfil(S, novos)
+                salvar()
+                st.session_state.aviso = ("ok", "Perfil salvo", "O plano foi recalculado com os dados novos. O histórico foi mantido.")
+                st.rerun()
+    if S["weights"]:
+        ult = R.pesos_ordenados(S)[-1]
+        st.caption(f"Peso atual: {br(ult['peso'])} kg (última pesagem, em {fmt_dy(ult['date'])}). "
+                   "Para registrar um peso novo, use “Peso desta semana” no Início ou Evolução → Peso; "
+                   "mudar o peso inicial aqui corrige também a pesagem do primeiro acesso.")
+    i0, i1 = R.imc(S, p["pesoInicial"]), R.imc(S, R.peso_atual(S))
+    st.caption(f"IMC inicial: {br(i0)} kg/m² · IMC atual: {br(i1)} kg/m² ({R.imc_categoria(i1)}). Indicador de triagem, não é diagnóstico.")
+
+    html_md("<div class='fl-secao'>Avaliação de segurança</div>")
+    if S["assess"]["done"] and not st.session_state.get("editar_aval"):
+        tipo, tit, txt = resultado_avaliacao()
+        aviso(tipo, tit, txt)
+        a = S["assess"]
+        yn = {"sim": "Sim", "nao": "Não", "nao_sei": "Não sei"}
+        st.dataframe(pd.DataFrame([
+            ("Dor articular", yn.get(a["dor"], "—")), ("Inchaço", yn.get(a["inchaco"], "—")), ("Dificuldade para caminhar", yn.get(a["caminhar"], "—")),
+            ("Diagnóstico médico", yn.get(a["diag"], "—") + (": " + a["diagTxt"] if a.get("diagTxt") else "")),
+            ("Liberação para musculação", yn.get(a["liberacao"], "—")), ("Lesão muscular em recuperação", yn.get(a["lesao"], "—")),
+            ("Observações", a.get("joelho") or "—")], columns=["Item", "Resposta"]), hide_index=True, use_container_width=True)
+        st.caption(f"Atualizada em {fmt_dy(a['date'])}" if a.get("date") else "")
+        if st.button("Atualizar avaliação"):
+            st.session_state.editar_aval = True
+            st.rerun()
+    else:
+        form_avaliacao()
 
     html_md("<div class='fl-secao'>Lembretes</div>")
     st.info("Os lembretes aparecem no Início quando o app é aberto. Para notificações no celular é preciso a versão nativa.")
@@ -2291,4 +2269,4 @@ def tela_perfil() -> None:
 
 
 # ------------------------------------------------------------------ roteamento
-{"Início": tela_inicio, "Treinos": tela_treinos, "Evolução": tela_evolucao, "Hábitos": tela_habitos, "Perfil": tela_perfil}[aba]()
+{"Início": tela_inicio, "Treino": tela_treinos, "Evolução": tela_evolucao, "Meu plano": tela_meu_plano, "Perfil": tela_perfil}[aba]()
