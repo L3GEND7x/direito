@@ -483,3 +483,16 @@ def test_peso_semanal_pontos_e_album():
     at.radio(key="aba").set_value("Evolução").run()
     tudo = textos(at.main)
     assert not at.exception and "Álbum de figurinhas" in tudo and "Primeiro passo" in tudo and "De onde vêm os pontos" in tudo
+
+
+def test_endereco_novo_do_streamlit_cloud_vale_mais_que_o_site_url_antigo(monkeypatch):
+    """Trocar a URL do app no Streamlit Cloud não deixa o link antigo no botão de compartilhar."""
+    monkeypatch.setenv("FOCO_LEVE_SITE_URL", "https://rukkftmbwbe7c57ltah4ve.streamlit.app")
+    monkeypatch.setattr(type(st.context), "headers", property(lambda self: {"Host": "focoleve.streamlit.app"}))
+    at = primeiro_acesso(criar_conta(abrir(), "url@exemplo.com"))
+    at.radio(key="aba").set_value("Perfil").run()
+    assert not at.exception and [c.value for c in at.code] == ["https://focoleve.streamlit.app"]
+    # um Host qualquer (fora do Streamlit Cloud) não substitui o endereço configurado
+    monkeypatch.setattr(type(st.context), "headers", property(lambda self: {"Host": "evil.example.com"}))
+    at.run()
+    assert [c.value for c in at.code] == ["https://rukkftmbwbe7c57ltah4ve.streamlit.app"]

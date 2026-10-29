@@ -98,7 +98,14 @@ def abrir_loja():
 
 
 def endereco_do_app() -> str | None:
-    """Para onde o link de recuperação deve voltar: site_url dos Secrets, FOCO_LEVE_SITE_URL ou esta visita."""
+    """Endereço público do app (link de compartilhar e volta do link de recuperação).
+
+    No Streamlit Cloud vale o endereço *.streamlit.app desta visita: trocar a URL do app nas configurações não deixa o
+    link antigo no app mesmo que o site_url dos Secrets fique desatualizado. Fora dele: site_url dos Secrets,
+    FOCO_LEVE_SITE_URL ou o endereço desta visita."""
+    nuvem = (st.context.headers.get("Host") or "").strip().lower()
+    if re.fullmatch(r"[a-z0-9-]+\.streamlit\.app", nuvem):
+        return "https://" + nuvem
     try:
         if st.secrets.load_if_toml_exists() and st.secrets.get("supabase", {}).get("site_url"):
             return str(st.secrets["supabase"]["site_url"])
