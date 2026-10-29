@@ -360,3 +360,31 @@ div[data-testid="stMetricLabel"] p { color: var(--text-2) !important; }
 .fl-fig:not(.bloqueada) { border-color: rgba(240, 54, 74, .55); box-shadow: 0 0 0 1px rgba(240, 54, 74, .12) inset; }
 .fl-fig.bloqueada .fl-fig-emoji { filter: grayscale(1); opacity: .35; }
 .fl-fig.bloqueada i { color: var(--text-3); }
+
+/* ---------------------------------------------------------------- marca e acabamento premium */
+.fl-cab .marca { display: flex; align-items: center; gap: 8px; }
+.fl-cab .marca .fl-simbolo { border-radius: 6px; flex: 0 0 auto; }
+.fl-entrada { border-radius: var(--r-xl); min-height: 340px; padding: var(--sp-5); margin: 0 0 var(--sp-4); display: flex;
+  flex-direction: column; justify-content: flex-end; gap: 10px; background-size: cover; background-position: center 30%; }
+.fl-entrada .fl-simbolo { border-radius: 14px; box-shadow: 0 10px 30px -10px rgba(240, 54, 74, .7); margin-bottom: auto; }
+.fl-entrada-tit { font-family: var(--font-display); font-size: 2.1rem; font-weight: 800; line-height: 1.05; letter-spacing: -.035em; color: #fff; }
+.fl-entrada-tit em { font-style: normal; color: var(--accent); }
+.fl-entrada p { margin: 0; color: rgba(255, 255, 255, .78); font-size: var(--fs-body); max-width: 34ch; }
+
+/* item ativo da barra de abas: ícone em pílula vermelha */
+.stApp .st-key-aba [role="radiogroup"] label:has(input:checked) p span[role="img"] {
+  background: var(--accent); color: #fff !important; border-radius: 999px; padding: 4px 16px; box-shadow: 0 6px 18px -8px rgba(240, 54, 74, .9); }
+.stApp .st-key-aba [role="radiogroup"] label:has(input:checked) p { color: var(--text) !important; }
+
+/* menos linhas: superfícies se separam pelo tom, não pela borda */
+[data-testid="stVerticalBlockBorderWrapper"]:not(.st-emotion-cache-0), [data-testid="stForm"],
+[data-testid="stExpander"] details, [data-testid="stMetric"], .fl-card, .fl-tile { border-color: rgba(255, 255, 255, .045) !important; }
+
+/* números fortes e alinhados */
+.fl-tile b, div[data-testid="stMetricValue"], div[data-testid="stMetricValue"] * { font-weight: 800 !important; }
+
+/* entrada suave das seções */
+@media (prefers-reduced-motion: no-preference) {
+  .fl-hero, .fl-entrada, .fl-obs, .fl-fig { animation: fl-surge 320ms var(--ease) both; }
+  @keyframes fl-surge { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+}

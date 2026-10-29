@@ -143,3 +143,13 @@ def test_comparar_semanas(S):
     c = E.comparar_semanas(S)
     assert c["anterior"] == {"treinos": 2, "series": 6, "volume": 2 * 3 * 40 * 15, "cardio": 0}
     assert c["atual"]["treinos"] == 1 and c["atual"]["volume"] == 3 * 50 * 15
+
+
+# ---------------------------------------------------------------- confiabilidade
+def test_mesma_sessao_nao_duplica_no_historico(S):
+    R.iniciar_sessao(S, "A")
+    copia_da_sessao = R.copia(S)["active"]  # outra aba com a mesma sessão em andamento
+    R.finalizar_sessao(S, "bem", 50)
+    S["active"] = copia_da_sessao
+    R.finalizar_sessao(S, "cansado", 55)
+    assert len(S["sessions"]) == 1 and S["sessions"][0]["feeling"] == "cansado" and S["active"] is None

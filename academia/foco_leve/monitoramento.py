@@ -135,7 +135,7 @@ def observacoes(S: dict) -> list[dict]:
     recente, anterior = sem[0][0] + sem[1][0], sem[2][0] + sem[3][0]
     if anterior >= 4 and recente <= 0.7 * anterior:
         add("info", f"Sua frequência caiu nas últimas 2 semanas: {recente} treino(s), contra {anterior} nas 2 anteriores. "
-            "Se a agenda ficou difícil de cumprir, você pode reduzir os dias de treino no Perfil — o plano só muda "
+            "Se a agenda ficou difícil de cumprir, você pode reduzir os dias de treino em Meu plano — o plano só muda "
             "se você confirmar.", "inicio", "evolucao")
     elif anterior and recente > anterior:
         add("ok", f"Sua frequência subiu: {recente} treino(s) nas últimas 2 semanas, contra {anterior} nas 2 anteriores.",
@@ -228,7 +228,7 @@ def sugestoes(S: dict) -> list[dict]:
     for ex_id, n in contagem.items():
         if n >= 2 and ex_id in D.EXERCICIOS and (S["plan"].get(ex_id) or {}).get("ativo", True):
             add(f"tirar-{ex_id}", f"Você registrou dor em {R.nome_ex(ex_id)} em {n} treinos recentes. Quer tirar esse exercício "
-                "do plano? Outro da mesma vaga entra no lugar; dá para voltar em Perfil → Plano de exercícios. "
+                "do plano? Outro da mesma vaga entra no lugar; dá para voltar em Meu plano → Ajustes por exercício. "
                 "Se a dor continuar, procure um profissional de saúde.", ("desativar", ex_id))
     return out
 

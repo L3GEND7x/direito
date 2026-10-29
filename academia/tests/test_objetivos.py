@@ -251,7 +251,7 @@ def test_queda_de_frequencia_e_dias_sem_treinar(S):
                for k in (3, 4) for d in range(5)]
     S["sessions"] = antigas
     t = textos(S, "inicio")
-    assert "frequência caiu" in t and "Perfil" in t and "só muda se você confirmar" in t
+    assert "frequência caiu" in t and "Meu plano" in t and "só muda se você confirmar" in t
     assert "dias sem concluir um treino" in t
 
 
