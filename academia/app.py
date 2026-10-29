@@ -26,8 +26,7 @@ import streamlit.components.v1 as components
 # nova, mas os módulos do app importados antes continuam na versão antiga (e falta o que foi acrescentado neles).
 # Antes de importá-los, recarrega os que mudaram no disco — na ordem das dependências.
 MODULOS_DO_APP = ("foco_leve.dados", "foco_leve.regras", "foco_leve.plano", "foco_leve.evolucao",
-                  "foco_leve.armazenamento", "foco_leve.ia_vision", "foco_leve.ia_safety", "foco_leve.ia_context",
-                  "foco_leve.ia_storage", "foco_leve.ia_service", "ui", "personal_ai")
+                  "foco_leve.armazenamento", "ui")
 _cascata = False  # depois de recarregar um módulo, recarrega também os seguintes (podem depender dele)
 for _nome in MODULOS_DO_APP:
     _mod = sys.modules.get(_nome)
@@ -42,7 +41,6 @@ for _nome in MODULOS_DO_APP:
         _mod._fl_mtime = _mtime
         _cascata = True
 
-import personal_ai
 import ui
 from foco_leve import armazenamento as A
 from foco_leve import dados as D
@@ -573,9 +571,9 @@ def editar_dados() -> None:
 
 
 # ------------------------------------------------------------------ cabeçalho e navegação
-ABAS = ["Início", "Treinos", "Personal IA", "Evolução", "Hábitos", "Perfil"]
-ICONES = {"Início": ":material/home:", "Treinos": ":material/fitness_center:", "Personal IA": ":material/smart_toy:",
-          "Evolução": ":material/monitoring:", "Hábitos": ":material/water_drop:", "Perfil": ":material/person:"}
+ABAS = ["Início", "Treinos", "Evolução", "Hábitos", "Perfil"]
+ICONES = {"Início": ":material/home:", "Treinos": ":material/fitness_center:", "Evolução": ":material/monitoring:",
+          "Hábitos": ":material/water_drop:", "Perfil": ":material/person:"}
 if "aba" not in st.session_state:
     st.session_state.aba = "Início"
 if st.session_state.get("_ir"):
@@ -1873,5 +1871,4 @@ def tela_perfil() -> None:
 
 
 # ------------------------------------------------------------------ roteamento
-{"Início": tela_inicio, "Treinos": tela_treinos, "Evolução": tela_evolucao, "Hábitos": tela_habitos, "Perfil": tela_perfil,
- "Personal IA": lambda: personal_ai.tela(S, st.session_state.usuario, LOJA, salvar, t)}[aba]()
+{"Início": tela_inicio, "Treinos": tela_treinos, "Evolução": tela_evolucao, "Hábitos": tela_habitos, "Perfil": tela_perfil}[aba]()

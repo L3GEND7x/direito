@@ -17,7 +17,6 @@ from pathlib import Path
 import pytest
 
 SCHEMA = Path(__file__).resolve().parents[1] / "supabase" / "schema.sql"
-SCHEMA_IA = Path(__file__).resolve().parents[1] / "supabase" / "personal_ia.sql"
 BIN = next(iter(sorted(glob.glob("/usr/lib/postgresql/*/bin"), reverse=True)), None) or (
     os.path.dirname(shutil.which("pg_ctl")) if shutil.which("pg_ctl") else None)
 pytestmark = pytest.mark.skipif(not BIN or not os.path.exists(os.path.join(BIN, "initdb")), reason="PostgreSQL ausente")
@@ -63,9 +62,9 @@ def pg():
                                    "-q", "-At", "-v", "ON_ERROR_STOP=1"], input=prefixo + texto, text=True, capture_output=True)
         return r.returncode, (r.stdout.strip().splitlines()[1:] if papel else r.stdout.strip().splitlines()), r.stderr
 
-    rc, _, err = sql(SUPABASE_BASE + SCHEMA.read_text(encoding="utf-8") + SCHEMA_IA.read_text(encoding="utf-8"))
+    rc, _, err = sql(SUPABASE_BASE + SCHEMA.read_text(encoding="utf-8"))
     assert rc == 0, err
-    rc, _, err = sql(SCHEMA.read_text(encoding="utf-8") + SCHEMA_IA.read_text(encoding="utf-8"))  # rodar de novo não pode falhar
+    rc, _, err = sql(SCHEMA.read_text(encoding="utf-8"))  # rodar de novo não pode falhar
     assert rc == 0, err
     sql(f"insert into auth.users values ('{A_ID}', 'a@x.com'), ('{B_ID}', 'b@x.com'), ('{C_ID}', 'c@x.com');")
     yield sql
@@ -160,77 +159,3 @@ def test_rls_ligado_em_todas_as_tabelas_publicas(pg):
     _, linhas, _ = pg("select relname from pg_class c join pg_namespace n on n.oid = c.relnamespace "
                       "where n.nspname = 'public' and c.relkind = 'r' and not c.relrowsecurity;")
     assert linhas == []
-
-
-# ---------------------------------------------------------------- Personal IA: conversas, mensagens e fotos
-def _um(linhas):
-    assert len(linhas) == 1, linhas
-    return linhas[0]
-
-
-def test_rls_personal_ia_isolamento(pg):
-    sql = pg
-    # A cria conversa, mensagem e foto; vê as três
-    rc, l, err = como_a(sql, "insert into public.foco_leve_ia_conversas(titulo) values ('Treino de pernas') returning id;")
-    assert rc == 0, err
-    conv_a = _um(l)
-    rc, l, err = como_a(sql, f"insert into public.foco_leve_ia_mensagens(conversa_id, papel, texto) "
-                             f"values ('{conv_a}', 'user', 'meu joelho incomoda') returning id;")
-    assert rc == 0, err
-    msg_a = _um(l)
-    rc, l, err = como_a(sql, f"insert into public.foco_leve_ia_anexos(mensagem_id, mime, largura, altura, dados) "
-                             f"values ('{msg_a}', 'image/jpeg', 10, 10, 'QUJD') returning id;")
-    assert rc == 0, err
-    foto_a = _um(l)
-    _, l, _ = como_a(sql, "select (select count(*) from public.foco_leve_ia_conversas), "
-                          "(select count(*) from public.foco_leve_ia_mensagens), (select count(*) from public.foco_leve_ia_anexos);")
-    assert l == ["1|1|1"]
-
-    # B não vê nada de A, nem pedindo pelos ids
-    _, l, _ = como_b(sql, f"select (select count(*) from public.foco_leve_ia_conversas where id = '{conv_a}'), "
-                          f"(select count(*) from public.foco_leve_ia_mensagens where id = '{msg_a}'), "
-                          f"(select count(*) from public.foco_leve_ia_anexos where id = '{foto_a}');")
-    assert l == ["0|0|0"]
-    # B não altera nem apaga
-    _, l, _ = como_b(sql, f"update public.foco_leve_ia_conversas set titulo = 'x' where id = '{conv_a}' returning 1;")
-    assert l == []
-    _, l, _ = como_b(sql, f"update public.foco_leve_ia_mensagens set proposta_estado = 'aplicada' where id = '{msg_a}' returning 1;")
-    assert l == []
-    for tabela, i in (("foco_leve_ia_anexos", foto_a), ("foco_leve_ia_mensagens", msg_a), ("foco_leve_ia_conversas", conv_a)):
-        _, l, _ = como_b(sql, f"delete from public.{tabela} where id = '{i}' returning 1;")
-        assert l == [], tabela
-    # B não escreve na conversa de A, nem com o próprio user_id, nem anexa foto à mensagem de A
-    rc, _, err = como_b(sql, f"insert into public.foco_leve_ia_mensagens(conversa_id, papel, texto) values ('{conv_a}', 'user', 'oi');")
-    assert rc != 0 and "row-level security" in err
-    rc, _, err = como_b(sql, f"insert into public.foco_leve_ia_mensagens(conversa_id, user_id, papel, texto) "
-                             f"values ('{conv_a}', '{A_ID}', 'user', 'oi');")
-    assert rc != 0 and "row-level security" in err
-    rc, _, err = como_b(sql, f"insert into public.foco_leve_ia_anexos(mensagem_id, mime, dados) values ('{msg_a}', 'image/jpeg', 'QUJD');")
-    assert rc != 0 and "row-level security" in err
-    rc, _, err = como_b(sql, f"insert into public.foco_leve_ia_conversas(user_id, titulo) values ('{A_ID}', 'falsa');")
-    assert rc != 0 and "row-level security" in err
-
-    # sem login: nada
-    rc, _, err = sql("select count(*) from public.foco_leve_ia_mensagens;", papel="anon")
-    assert rc != 0 and "permission denied" in err
-
-    # integridade: a mensagem não muda de texto nem de conversa; só o estado da proposta
-    rc, _, err = como_a(sql, f"update public.foco_leve_ia_mensagens set texto = 'outro' where id = '{msg_a}';")
-    assert rc != 0 and "não pode ser alterada" in err
-    rc, _, err = como_a(sql, f"update public.foco_leve_ia_mensagens set proposta_estado = 'descartada' where id = '{msg_a}';")
-    assert rc == 0, err
-    rc, _, err = como_a(sql, f"update public.foco_leve_ia_conversas set user_id = '{B_ID}' where id = '{conv_a}';")
-    assert rc != 0
-
-    # o superusuário confere que nada de A sumiu
-    _, l, _ = sql(f"select (select count(*) from public.foco_leve_ia_conversas where user_id = '{A_ID}'), "
-                  f"(select count(*) from public.foco_leve_ia_mensagens where user_id = '{A_ID}'), "
-                  f"(select count(*) from public.foco_leve_ia_anexos where user_id = '{A_ID}');")
-    assert l == ["1|1|1"]
-
-    # A apaga a conversa: mensagens e fotos vão junto
-    _, l, _ = como_a(sql, f"delete from public.foco_leve_ia_conversas where id = '{conv_a}' returning 1;")
-    assert l == ["1"]
-    _, l, _ = sql(f"select (select count(*) from public.foco_leve_ia_mensagens where user_id = '{A_ID}'), "
-                  f"(select count(*) from public.foco_leve_ia_anexos where user_id = '{A_ID}');")
-    assert l == ["0|0"]
