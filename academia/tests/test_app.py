@@ -456,3 +456,18 @@ def test_conta_com_pesagem_inicial_antiga_e_corrigida_ao_entrar():
     assert not at.exception and [w["peso"] for w in at.session_state["S"]["weights"]] == [115.0]
     assert any(m.value == "115,0 kg" for m in at.metric) and any(m.value == "25,0 kg" for m in at.metric)
     assert loja.carregar_com_versao(u)[0]["weights"][0]["peso"] == 115.0  # já gravado no banco
+
+
+def test_perfil_tem_botao_de_compartilhar_so_com_o_link(monkeypatch):
+    monkeypatch.setenv("FOCO_LEVE_SITE_URL", "https://foco-leve.test")
+    at = primeiro_acesso(criar_conta(abrir(), "share@exemplo.com"))
+    at.radio(key="aba").set_value("Perfil").run()
+    assert not at.exception
+    assert any("Convide alguém" in m.value for m in at.markdown)
+    assert [c.value for c in at.code] == ["https://foco-leve.test"]
+    whats = [x.proto.url for x in at.get("link_button")]
+    assert len(whats) == 1 and whats[0].startswith("https://wa.me/?text=") and "foco-leve.test" in whats[0]
+    assert "share" not in whats[0].split("foco-leve.test")[0].lower()  # só convite + link, sem e-mail da conta
+    import ui
+    h = ui.botao_compartilhar("https://foco-leve.test", "convite </script><b>")
+    assert "navigator.share" in h and "clipboard" in h and "</script><b>" not in h

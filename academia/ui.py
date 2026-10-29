@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+import json
 from pathlib import Path
 
 _CSS = Path(__file__).parent / "assets" / "tema.css"
@@ -38,6 +39,51 @@ AJUSTES_PAGINA = """<script>
     }, function () { if (++tentativas < 15) setTimeout(esperar, 2000); });
   })();
 })();
+</script>"""
+
+
+def botao_compartilhar(url: str, texto: str) -> str:
+    """Botão "Compartilhar": abre a janela de compartilhamento do aparelho (Web Share API); onde ela não existe
+    (a maioria dos computadores), copia o link. Só o link público do app é compartilhado, nenhum dado da conta."""
+    dados = json.dumps({"title": "Foco Leve", "text": texto, "url": url}, ensure_ascii=False).replace("</", "<\\/")
+    return """<style>
+  body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, system-ui, sans-serif; }
+  button { width: 100%; min-height: 48px; border: 0; border-radius: 14px; cursor: pointer; color: #fff; font-size: 16px;
+    font-weight: 600; background: linear-gradient(180deg, #f5475a 0%, #e02d42 100%); display: flex; gap: 8px;
+    align-items: center; justify-content: center; font-family: inherit; }
+  button:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+  #msg { color: #a1a1a6; font-size: 13px; text-align: center; min-height: 18px; margin-top: 6px; }
+</style>
+<button id="b" type="button" aria-label="Compartilhar o Foco Leve">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+    <path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7"/><path d="M16 6l-4-4-4 4"/><path d="M12 2v13"/></svg>
+  Compartilhar o app</button>
+<div id="msg" role="status" aria-live="polite"></div>
+<script>
+const dados = """ + dados + """;
+const msg = t => { document.getElementById("msg").textContent = t; };
+function janelas() {  // o app roda num iframe: o compartilhamento precisa da janela de cima
+  const ws = [];
+  for (const f of [() => window.top, () => window.parent, () => window]) { try { const w = f(); w.navigator; ws.push(w); } catch (e) {} }
+  return ws;
+}
+document.getElementById("b").addEventListener("click", async () => {
+  for (const w of janelas()) {
+    try {
+      if (w.navigator.share && (!w.navigator.canShare || w.navigator.canShare(dados))) {
+        await w.navigator.share(dados);
+        msg("Obrigado por compartilhar!");
+        return;
+      }
+    } catch (e) {
+      if (e && e.name === "AbortError") { msg(""); return; }  // a pessoa fechou a janela de compartilhamento
+    }
+  }
+  for (const w of janelas()) {
+    try { await w.navigator.clipboard.writeText(dados.url); msg("Link copiado! Cole numa conversa para enviar."); return; } catch (e) {}
+  }
+  msg("Use o botão do WhatsApp ou copie o link abaixo.");
+});
 </script>"""
 
 
