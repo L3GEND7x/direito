@@ -489,6 +489,18 @@ def marcar_serie(S: dict, i: int, j: int, feito: bool) -> int:
     return int(e.get("descanso") or 0)
 
 
+def concluir_restantes(S: dict, i: int, carga: str, reps: str) -> int:
+    """Conclui de uma vez as séries que faltam do exercício i com a mesma carga e repetições. Devolve quantas."""
+    se = S["active"]["ex"][i]
+    n = 0
+    for j, x in enumerate(se["sets"]):
+        if not x.get("done"):
+            x["load"], x["reps"] = carga, reps
+            marcar_serie(S, i, j, True)
+            n += 1
+    return n
+
+
 def garantir_uids(a: dict) -> bool:
     """Dá identificador próprio a cada exercício da sessão (sessões antigas não tinham). True se mudou algo."""
     mudou = False

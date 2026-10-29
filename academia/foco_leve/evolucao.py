@@ -124,3 +124,24 @@ def comparacao_peso(S: dict) -> dict | None:
     return {"primeira": w[0]["peso"], "data_primeira": w[0]["date"], "ultima": w[-1]["peso"], "data_ultima": w[-1]["date"],
             "variacao": w[-1]["peso"] - w[0]["peso"], "desde_inicial": w[-1]["peso"] - float(p["pesoInicial"]),
             "falta": max(0.0, w[-1]["peso"] - float(p["pesoMeta"])), "registros": len(w)}
+
+
+# Medidas corporais registradas junto com a pesagem: chave → (rótulo, mínimo, máximo) em cm
+MEDIDAS = {"cintura": ("Cintura (abdominal)", 40, 250), "quadril": ("Quadril", 50, 250),
+           "braco": ("Braço contraído", 15, 80), "coxa": ("Coxa", 25, 120)}
+
+
+def serie_medida(S: dict, chave: str) -> list[tuple[str, float]]:
+    """(data, cm) de cada registro da medida, em ordem de data."""
+    return [(w["date"], float(w[chave])) for w in R.pesos_ordenados(S) if R.ok(R.num(w.get(chave)))]
+
+
+def comparacao_medidas(S: dict) -> list[dict]:
+    """Primeiro e último registro de cada medida com pelo menos 2 registros."""
+    out = []
+    for k, (rotulo, _, _) in MEDIDAS.items():
+        sm = serie_medida(S, k)
+        if len(sm) >= 2:
+            out.append({"chave": k, "rotulo": rotulo, "primeira": sm[0][1], "data_primeira": sm[0][0],
+                        "ultima": sm[-1][1], "data_ultima": sm[-1][0], "variacao": sm[-1][1] - sm[0][1], "registros": len(sm)})
+    return out

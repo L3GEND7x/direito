@@ -26,7 +26,7 @@ import streamlit.components.v1 as components
 # nova, mas os módulos do app importados antes continuam na versão antiga (e falta o que foi acrescentado neles).
 # Antes de importá-los, recarrega os que mudaram no disco — na ordem das dependências.
 MODULOS_DO_APP = ("foco_leve.dados", "foco_leve.biblioteca", "foco_leve.regras", "foco_leve.objetivos", "foco_leve.plano",
-                  "foco_leve.monitoramento", "foco_leve.evolucao",
+                  "foco_leve.monitoramento", "foco_leve.evolucao", "foco_leve.relatorio_pdf",
                   "foco_leve.armazenamento", "ui")
 _cascata = False  # depois de recarregar um módulo, recarrega também os seguintes (podem depender dele)
 for _nome in MODULOS_DO_APP:
@@ -51,6 +51,7 @@ from foco_leve import monitoramento as M
 from foco_leve import objetivos as O
 from foco_leve import plano as P
 from foco_leve import regras as R
+from foco_leve import relatorio_pdf as RP
 from foco_leve.regras import br, brx, fmt_d, fmt_dy, num, ok
 
 for _mod in (sys.modules[n] for n in MODULOS_DO_APP if n in sys.modules):  # carregados agora: marca a versão do disco
@@ -111,6 +112,7 @@ def endereco_do_app() -> str | None:
 
 LOJA, ERRO_CONFIG = abrir_loja()
 VALIDAR_A_CADA = 300  # segundos entre confirmações da sessão no servidor de autenticação
+CONFERIR_VERSAO_A_CADA = 20  # segundos entre consultas da versão dos dados no banco
 
 
 def html_topo(titulo: str, sobre: str) -> None:
@@ -284,9 +286,16 @@ def estado() -> dict:
         if time.time() - st.session_state.get("validado_em", 0) > VALIDAR_A_CADA:
             LOJA.validar(u)  # a identidade vem do servidor de autenticação, nunca da URL ou do navegador
             st.session_state.validado_em = time.time()
-        v = LOJA.versao(u)
+        # a versão no banco é conferida no máximo a cada CONFERIR_VERSAO_A_CADA segundos: durante o treino cada toque
+        # seria uma requisição. Uma gravação de outra aba nesse intervalo é pega pela versão esperada ao salvar.
+        recente = time.time() - st.session_state.get("versao_em", 0) < CONFERIR_VERSAO_A_CADA
+        v = st.session_state.get("versao") if recente and "S" in st.session_state else LOJA.versao(u)
+        if not recente:
+            st.session_state.versao_em = time.time()
         if "S" not in st.session_state or (st.session_state.get("versao") != v and not st.session_state.get("pendente")):
             st.session_state.S, st.session_state.versao = LOJA.carregar_com_versao(u)
+            st.session_state.versao_em = time.time()
+            st.session_state.salvo_hash = impressao(st.session_state.S)
             if P.sincronizar_pesagem_inicial(st.session_state.S):
                 try:  # corrige e grava já; se outra aba salvou no meio, a correção roda de novo na próxima carga
                     st.session_state.versao = LOJA.salvar(u, st.session_state.S, st.session_state.versao)
@@ -308,14 +317,25 @@ def estado() -> dict:
     return st.session_state.S
 
 
+def impressao(S: dict) -> str:
+    return hashlib.sha256(json.dumps(S, sort_keys=True, default=str).encode()).hexdigest()
+
+
 def salvar() -> None:
-    """Grava só se ninguém salvou no meio; senão descarta esta ação e recarrega (nunca apaga o que a outra aba gravou)."""
+    """Grava só se ninguém salvou no meio; senão descarta esta ação e recarrega (nunca apaga o que a outra aba gravou).
+    Sem mudança desde a última gravação, não envia nada."""
     u = st.session_state.usuario
+    h = impressao(st.session_state.S)
+    if h == st.session_state.get("salvo_hash") and not st.session_state.get("pendente"):
+        return
     try:
         st.session_state.versao = LOJA.salvar(u, st.session_state.S, st.session_state.get("versao", 0))
+        st.session_state.versao_em = time.time()
+        st.session_state.salvo_hash = h
         st.session_state.pendente = False
     except A.Conflito:
         st.session_state.S, st.session_state.versao = LOJA.carregar_com_versao(u)
+        st.session_state.salvo_hash = impressao(st.session_state.S)
         st.session_state.pendente = False
         st.session_state.aviso = ("alerta", "Dados atualizados em outra aba",
                                   "O app foi aberto em outra aba ou aparelho e salvou antes. Os dados foram recarregados: "
@@ -415,6 +435,30 @@ def observacoes(tela: str, limite: int = 3) -> None:
     rotulo = {"ok": "Bom sinal", "alerta": "Atenção", "info": "Acompanhamento"}  # a cor da borda mostra o tipo
     html_md("".join(f"<div class='fl-obs {o['tipo']}' role='note' aria-label='{rotulo[o['tipo']]}'>"
                     f"<span>{html.escape(o['texto'])}</span></div>" for o in obs))
+
+
+def _aplicar_sugestao(sug: dict) -> None:
+    msg = M.aplicar(S, sug)
+    salvar()
+    st.session_state.aviso = ("ok", "Plano ajustado", msg + " O histórico foi mantido.")
+
+
+def _dispensar_sugestao(sug: dict) -> None:
+    M.dispensar(S, sug)
+    salvar()
+
+
+def sugestoes() -> None:
+    """Ajustes sugeridos pelos registros: só mudam o plano quando a pessoa toca em “Aplicar”."""
+    for sug in M.sugestoes(S):
+        with st.container(border=True):
+            html_md("<p class='fl-rotulo'>Sugestão de ajuste</p>")
+            st.markdown(sug["texto"])
+            c1, c2 = st.columns(2)
+            c1.button("Aplicar", key=f"sug_ok_{sug['id']}", type="primary", use_container_width=True,
+                      on_click=_aplicar_sugestao, args=(sug,))
+            c2.button("Agora não", key=f"sug_nao_{sug['id']}", use_container_width=True,
+                      on_click=_dispensar_sugestao, args=(sug,))
 
 
 def cartoes(itens) -> None:
@@ -854,6 +898,7 @@ def tela_inicio() -> None:
             tentar_iniciar(wk)
         st.caption(texto_etapas(pl))
     observacoes("inicio")
+    sugestoes()
 
     # progresso: semana do plano, consistência e cardio
     ws = R.inicio_semana(t)
@@ -1357,9 +1402,15 @@ def bloco_series(i: int, se: dict, e: dict, sid: str) -> None:
                                    placeholder=f"última: {ult}" if ult else "kg")
             else:
                 c1.caption("Sem carga")
-            rp = c2.text_input(f"Repetições da série {j + 1}", sset.get("reps") or R.reps_alvo(e), key="r" + k)
-            if st.button(f"Concluir série {j + 1}", type="primary", use_container_width=True, key=f"serie_ok_{k}",
-                         icon=":material/check:"):
+            # a série anterior já preenche carga e repetições: repetir é só tocar em concluir
+            reps_ant = se["sets"][j - 1].get("reps") if j > 0 else ""
+            rp = c2.text_input(f"Repetições da série {j + 1}", sset.get("reps") or reps_ant or R.reps_alvo(e), key="r" + k)
+            restantes = sum(1 for x in se["sets"] if not x["done"])
+            clicou = st.button(f"Concluir série {j + 1}", type="primary", use_container_width=True, key=f"serie_ok_{k}",
+                               icon=":material/check:")
+            todas = restantes > 1 and st.button(f"Concluir as {restantes} séries iguais", use_container_width=True,
+                                                key=f"todas_{k}", icon=":material/done_all:")
+            if clicou or todas:
                 vl, vr = num(ld), num(rp)
                 if ld.strip() and (not ok(vl) or not 0 <= vl <= 500):
                     st.error("Carga inválida: use apenas números (ex.: 42,5).")
@@ -1367,6 +1418,12 @@ def bloco_series(i: int, se: dict, e: dict, sid: str) -> None:
                 if rp.strip() and (not ok(vr) or not 0 <= vr <= 200):
                     st.error("Repetições inválidas.")
                     return
+                if todas:
+                    n = R.concluir_restantes(S, i, ld.strip(), rp.strip())
+                    st.session_state.descanso_ate = 0
+                    salvar()
+                    st.toast(f"{e['nome']}: {n} séries concluídas", icon=":material/check_circle:")
+                    st.rerun()
                 sset["load"], sset["reps"] = ld.strip(), rp.strip()
                 concluir_serie(i, j, k, e, se)
         else:
@@ -1617,38 +1674,69 @@ def evolucao_peso() -> None:
         c1, c2 = st.columns(2)
         dt = c1.date_input("Data", value=R.pd(t), max_value=R.pd(t), format="DD/MM/YYYY")
         peso = c2.text_input("Peso (kg)", placeholder="Ex.: 114,2")
-        c1, c2 = st.columns(2)
-        cint = c1.text_input("Circunferência abdominal (cm)", placeholder="opcional")
-        cond = c2.selectbox("Condições da pesagem", ["Em jejum, após ir ao banheiro", "Pela manhã, após café", "À tarde ou à noite", "Outra condição"])
+        cond = st.selectbox("Condições da pesagem", ["Em jejum, após ir ao banheiro", "Pela manhã, após café", "À tarde ou à noite", "Outra condição"])
+        st.caption("Medidas em cm (opcionais): sempre no mesmo ponto do corpo, de preferência pela manhã.")
+        textos_med = {}
+        for n, (k, (rotulo, _, _)) in enumerate(E.MEDIDAS.items()):
+            if n % 2 == 0:
+                cols = st.columns(2)
+            textos_med[k] = cols[n % 2].text_input(f"{rotulo} (cm)", placeholder="opcional", key=f"med_{k}")
         obs = st.text_input("Observações", placeholder="opcional")
         if st.form_submit_button("Salvar pesagem", type="primary"):
-            pv, cv = num(peso), num(cint)
-            erros = []
+            pv = num(peso)
+            erros, medidas = [], {}
             if not ok(pv) or not 30 <= pv <= 300:
                 erros.append("Informe o peso entre 30 e 300 kg.")
-            if cint.strip() and (not ok(cv) or not 40 <= cv <= 250):
-                erros.append("A circunferência deve ficar entre 40 e 250 cm.")
+            for k, txt in textos_med.items():
+                rotulo, lo, hi = E.MEDIDAS[k]
+                v = num(txt)
+                if txt.strip() and (not ok(v) or not lo <= v <= hi):
+                    erros.append(f"{rotulo} deve ficar entre {lo} e {hi} cm.")
+                medidas[k] = round(v, 1) if txt.strip() and ok(v) else None
             if erros:
                 st.error(" ".join(erros))
             else:
                 d = dt.isoformat()
                 S["weights"] = [x for x in S["weights"] if x["date"] != d]
-                S["weights"].append({"id": R.novo_id(), "date": d, "peso": round(pv, 1), "cintura": round(cv, 1) if cint.strip() else None,
+                S["weights"].append({"id": R.novo_id(), "date": d, "peso": round(pv, 1), **medidas,
                                      "cond": cond, "obs": obs.strip()})
                 salvar()
                 st.success("Pesagem salva.")
                 st.rerun()
+    evolucao_medidas()
     html_md("<div class='fl-secao'>Pesagens</div>")
     w = list(reversed(R.pesos_ordenados(S)))
     if not w:
         html_md(ui.vazio("Nenhuma pesagem registrada", "Use o formulário acima para registrar a primeira."))
     for x in w:
         c1, c2 = st.columns([4, 1])
-        c1.write(f"**{br(x['peso'])} kg** · {fmt_dy(x['date'])}" + (f" · cintura {brx(x['cintura'])} cm" if ok(x.get("cintura")) else "") + f"  \n<small>{x.get('cond', '')}{' · ' + x['obs'] if x.get('obs') else ''}</small>", unsafe_allow_html=True)
+        meds = "".join(f" · {E.MEDIDAS[k][0].split(' (')[0].lower()} {brx(x[k])} cm" for k in E.MEDIDAS if ok(num(x.get(k))))
+        c1.write(f"**{br(x['peso'])} kg** · {fmt_dy(x['date'])}" + meds + f"  \n<small>{x.get('cond', '')}{' · ' + x['obs'] if x.get('obs') else ''}</small>", unsafe_allow_html=True)
         if c2.button("Excluir", key="dw" + x["id"]):
             S["weights"] = [y for y in S["weights"] if y["id"] != x["id"]]
             salvar()
             st.rerun()
+
+
+def evolucao_medidas() -> None:
+    """Medidas corporais: primeiro × último registro e a curva da medida escolhida."""
+    med = E.comparacao_medidas(S)
+    if not med:
+        if any(ok(num(w.get(k))) for w in S["weights"] for k in E.MEDIDAS):
+            st.caption("Registre a mesma medida pelo menos duas vezes para ver a comparação.")
+        return
+    with st.container(border=True):
+        html_md("<p class='fl-rotulo'>Medidas corporais</p>")
+        html_md(ui.grade([(m["rotulo"].split(" (")[0], f"{brx(m['ultima'])} cm",
+                           f"{'+' if m['variacao'] > 0 else ''}{br(m['variacao'])} cm desde {fmt_d(m['data_primeira'])}", False)
+                          for m in med]))
+        k = st.selectbox("Curva da medida", [m["chave"] for m in med], format_func=lambda c: E.MEDIDAS[c][0], key="curva_med")
+        df = pd.DataFrame([{"Data": fmt_d(d), "cm": v} for d, v in E.serie_medida(S, k)])
+        grafico(df, {"height": 160, "mark": {"type": "line", "color": "#f0364a", "point": {"color": "#f0364a"}},
+                     "encoding": {"x": {"field": "Data", "type": "nominal", "sort": list(df["Data"]), "title": None,
+                                        "axis": {"labelAngle": 0, "labelOverlap": True}},
+                                  "y": {"field": "cm", "type": "quantitative", "scale": {"zero": False}, "title": None},
+                                  "tooltip": [{"field": "Data"}, {"field": "cm", "type": "quantitative"}]}})
 
 
 def evolucao_treinos() -> None:
@@ -1724,6 +1812,14 @@ def evolucao_relatorio() -> None:
     texto = R.relatorio_semanal(S, st.session_state.sem_rel)
     st.code(texto, language=None)
     st.download_button("Baixar relatório (.txt)", texto.encode("utf-8"), file_name=f"foco-leve-relatorio-{st.session_state.sem_rel}.txt")
+    html_md("<div class='fl-secao'>Relatório completo em PDF</div>")
+    st.caption("Perfil, peso e medidas, frequência, séries por grupo, cargas, desconfortos e observações: para levar ao "
+               "profissional de educação física ou ao médico. Gerado só com os seus registros.")
+    if st.button("Preparar PDF", icon=":material/picture_as_pdf:", use_container_width=True):
+        st.session_state.pdf_rel = RP.gerar(S)
+    if st.session_state.get("pdf_rel"):
+        st.download_button("Baixar relatório (.pdf)", st.session_state.pdf_rel, file_name=f"foco-leve-evolucao-{t}.pdf",
+                           mime="application/pdf", type="primary", use_container_width=True, icon=":material/download:")
 
 
 # ------------------------------------------------------------------ HÁBITOS
@@ -1773,6 +1869,17 @@ def tela_habitos() -> None:
 TEXTO_CONVITE = "Estou usando o Foco Leve para organizar meus treinos e acompanhar minha evolução. Experimente:"
 
 
+def instalar() -> None:
+    """Como pôr o app na tela inicial (o navegador faz a instalação; o app só fornece ícone e nome)."""
+    with st.expander(":material/install_mobile: Instalar na tela inicial do celular"):
+        st.markdown("**Android (Chrome):** abra o app, toque nos três pontos (⋮) e em **Instalar app** ou "
+                    "**Adicionar à tela inicial**.  \n"
+                    "**iPhone (Safari):** toque em **Compartilhar** (quadrado com seta) e em **Adicionar à Tela de Início**.  \n"
+                    "O Foco Leve abre como um aplicativo, com ícone próprio e sem a barra do navegador.")
+        st.caption("Lembretes por notificação no celular não estão disponíveis: o Streamlit não permite enviar "
+                   "notificações. Os lembretes continuam aparecendo no Início quando você abre o app.")
+
+
 def compartilhar() -> None:
     """Convite para o app: só o link público, nunca dados da conta."""
     url = endereco_do_app()
@@ -1800,6 +1907,7 @@ def tela_perfil() -> None:
             sair()
             st.rerun()
     compartilhar()
+    instalar()
     with st.form("perfil"):
         nome = st.text_input("Nome (opcional)", p.get("nome", ""))
         c1, c2 = st.columns(2)

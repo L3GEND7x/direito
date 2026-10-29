@@ -391,3 +391,34 @@ def test_objetivos_em_cartoes_biblioteca_e_acompanhamento():
     # Evolução: acompanhamento sem dados não inventa números
     at.radio(key="aba").set_value("Evolução").run()
     assert not at.exception and "Ainda não há treinos concluídos" in textos(at.main)
+
+
+def test_series_iguais_medidas_pdf_e_instalar():
+    at = criar_conta(abrir(), "rapida@exemplo.com")
+    primeiro_acesso(at)
+    at.radio(key="aba").set_value("Treinos").run()
+    [s for s in at.selectbox if s.label == "Trocar o treino de hoje"][0].set_value("A").run()
+    botao(at, "Iniciar este treino").click().run()
+    campo(at, "Carga da série 1 (kg)").input("30")
+    todas = [b for b in at.button if b.label.startswith("Concluir as ") and b.label.endswith(" séries iguais")][0]
+    todas.click().run()
+    assert not at.exception
+    ex0 = at.session_state["S"]["active"]["ex"][0]
+    assert ex0["done"] and all(x["done"] and x["load"] == "30" and x["reps"] == "15" for x in ex0["sets"])
+    # medidas corporais junto com a pesagem
+    at.radio(key="aba").set_value("Evolução").run()
+    campo(at, "Peso (kg)").input("110")
+    campo(at, "Quadril (cm)").input("118,5")
+    botao(at, "Salvar pesagem").click().run()
+    assert not at.exception
+    w = [x for x in at.session_state["S"]["weights"] if x["peso"] == 110][0]
+    assert w["quadril"] == 118.5 and w["braco"] is None
+    # relatório em PDF
+    botao(at, "Preparar PDF").click().run()
+    assert not at.exception and at.session_state["pdf_rel"][:5] == b"%PDF-"
+    # instalar na tela inicial
+    at.radio(key="aba").set_value("Perfil").run()
+    assert any("Instalar na tela inicial" in e.label for e in at.expander)
+    # sair apaga o PDF da sessão (não fica para a próxima conta)
+    botao(at, "Sair da conta").click().run()
+    assert "pdf_rel" not in at.session_state
