@@ -422,3 +422,29 @@ def test_series_iguais_medidas_pdf_e_instalar():
     # sair apaga o PDF da sessão (não fica para a próxima conta)
     botao(at, "Sair da conta").click().run()
     assert "pdf_rel" not in at.session_state
+
+
+def test_ficha_no_treino_meta_de_carga_e_lembrete_de_copia():
+    at = criar_conta(abrir(), "metas@exemplo.com")
+    primeiro_acesso(at)
+    at.radio(key="aba").set_value("Treinos").run()
+    [s for s in at.selectbox if s.label == "Trocar o treino de hoje"][0].set_value("A").run()
+    botao(at, "Iniciar este treino").click().run()
+    assert any(s.label == "Aparelho ocupado ou desconfortável? Trocar por" for s in at.selectbox)
+    campo(at, "Carga da série 1 (kg)").input("30")
+    [b for b in at.button if b.label.startswith("Concluir as ")][0].click().run()
+    botao(at, "Finalizar treino").click().run()
+    [r for r in at.radio if r.label == "Sensação geral"][0].set_value("bem")
+    botao(at, "Salvar treino").click().run()
+    assert not at.exception and at.session_state["S"]["sessions"]
+    # Evolução (em outra aba do navegador): gráfico do exercício e meta de carga
+    at = entrar(abrir(), "metas@exemplo.com")
+    at.radio(key="aba").set_value("Evolução").run()
+    ex = at.selectbox(key="ev_ex").value
+    [x for x in at.text_input if x.label == "Meta de carga (kg)"][0].input("45")
+    botao(at, "Salvar meta").click().run()
+    assert not at.exception and at.session_state["S"]["metasCarga"] == {ex: 45.0}
+    assert "Recordes pessoais" in textos(at.main) and "Esta semana × anterior" in textos(at.main)
+    # Início: lembrete de cópia de segurança (há treino e nenhuma cópia baixada)
+    at.radio(key="aba").set_value("Início").run()
+    assert "ainda não baixou uma cópia de segurança" in textos(at.main)
