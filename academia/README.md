@@ -89,6 +89,12 @@ O plano não substitui avaliação médica nem a orientação do profissional de
   semana, +30 por recorde de carga, +2 por check-in), níveis a cada 500 pontos e um **álbum de figurinhas** em
   Evolução → Conquistas. Tudo é calculado dos registros: excluir um treino tira os pontos dele.
 
+- **Navegação em 5 áreas:** Início (treino do dia, semana, alertas, peso e pontos), Treino (registro rápido e
+  descanso com "+15 s" e "Pular"), Evolução (peso, treinos, hábitos, conquistas e relatórios), **Meu plano**
+  (objetivo, equipamentos, prioridades, dias, tempo, nível, limitações, 20 semanas, agenda, biblioteca e ajustes) e
+  Perfil (conta, dados pessoais, segurança, instalação e cópia). Diagnóstico em `docs/auditoria-premium.md`.
+- **Marca:** símbolo próprio (anel de foco com seta de progresso) no cabeçalho, na tela de entrada e no ícone do app.
+
 A pesquisa por trás dessas regras (projetos de código aberto, licenças, estudos, limitações) está em
 [`docs/pesquisa.md`](docs/pesquisa.md).
 
@@ -162,7 +168,7 @@ exportar | atribuir` faz o mesmo com backup prévio (veja a ajuda do script).
 ## Estrutura
 
 ```
-app.py                     interface (5 abas: Início, Treinos, Evolução, Hábitos, Perfil)
+app.py                     interface (5 áreas: Início, Treino, Evolução, Meu plano, Perfil)
 ui.py                      componentes visuais (anéis, semana, linha do tempo, estados vazios)
 assets/tema.css            sistema de design (variáveis, componentes, barra inferior)
 foco_leve/dados.py         exercícios, treinos, alternativas, intensidades de cardio, fontes

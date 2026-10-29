@@ -579,7 +579,8 @@ def finalizar_sessao(S: dict, sensacao: str, minutos: float, obs: str = "", rpe_
            "rpeSessao": rpe_sessao, "fadiga": fadiga, "recuperacao": recuperacao,
            "pct": feitos / len(a["ex"]) * 100 if a["ex"] else 0}
     rec["kcal"] = energia(S, rec)["kcal"]
-    S["sessions"].append(rec)
+    # a mesma sessão nunca entra duas vezes no histórico (toque duplo, aba repetida): a última versão vence
+    S["sessions"] = [x for x in S["sessions"] if x.get("id") != rec["id"]] + [rec]
     S["active"] = None
     rec["_recordes"] = recordes
     return rec

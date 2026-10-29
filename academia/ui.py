@@ -104,8 +104,27 @@ def esc(x) -> str:
     return html.escape(str(x))
 
 
+# Símbolo do Foco Leve: um anel aberto (foco) de onde sai uma seta para cima (progresso), sobre o vermelho da marca.
+# Mesma geometria do ícone do app (static/), para ser reconhecível também em tamanho pequeno.
+def simbolo(tam: int = 28) -> str:
+    return (f"<svg class='fl-simbolo' width='{tam}' height='{tam}' viewBox='0 0 64 64' role='img' aria-label='Foco Leve'>"
+            "<rect width='64' height='64' rx='16' fill='#f0364a'/>"
+            "<path d='M41.5 22.5 A16 16 0 1 0 45 38' fill='none' stroke='#fff' stroke-width='6' stroke-linecap='round'/>"
+            "<path d='M31 33 L48 16 M37 16 H48 V27' fill='none' stroke='#fff' stroke-width='6' stroke-linecap='round' "
+            "stroke-linejoin='round'/></svg>")
+
+
+def entrada(foto_url: str) -> str:
+    """Abertura da tela de entrada: foto de treino, símbolo e a frase da marca."""
+    fundo = ("linear-gradient(180deg,rgba(0,0,0,.15) 0%,rgba(0,0,0,.55) 45%,#000 100%),"
+             f"url('{foto_url}')")
+    return (f"<div class='fl-entrada' style=\"background-image:{fundo}\">{simbolo(52)}"
+            "<div class='fl-entrada-tit'>Seu treino,<br><em>sua evolução.</em></div>"
+            "<p>Plano feito para o seu objetivo, registro rápido das séries e progresso que você enxerga.</p></div>")
+
+
 def cabecalho(titulo: str, sobre: str = "") -> str:
-    return ("<div class='fl-cab'><div class='marca'>Foco Leve</div>"
+    return (f"<div class='fl-cab'><div class='marca'>{simbolo(22)}<span>Foco Leve</span></div>"
             + (f"<div class='sobre'>{esc(sobre)}</div>" if sobre else "")
             + f"<h1>{esc(titulo)}</h1></div>")
 

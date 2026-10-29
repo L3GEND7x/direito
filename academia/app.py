@@ -60,7 +60,7 @@ for _mod in (sys.modules[n] for n in MODULOS_DO_APP if n in sys.modules):  # car
     if not hasattr(_mod, "_fl_mtime"):
         _mod._fl_mtime = Path(_mod.__file__).stat().st_mtime
 
-st.set_page_config(page_title="Foco Leve", page_icon="💪", layout="centered")
+st.set_page_config(page_title="Foco Leve", page_icon=str(Path(__file__).parent / "static" / "icone-192.png"), layout="centered")
 
 PASTA_FOTOS = A.CAMINHO_PADRAO.parent / "fotos"
 
@@ -139,7 +139,7 @@ def tela_configuracao_pendente() -> None:
 
 def tela_entrada() -> None:
     """Login e cadastro. Nenhum dado pessoal é lido ou gravado antes de saber de quem é."""
-    html_topo("Entrar", "Treino e emagrecimento")
+    st.markdown(ui.entrada(f"{D.FOTO_URL_BASE}{D.FOTOS['agachamento_livre']}/0.jpg"), unsafe_allow_html=True)  # html_md vem depois
     st.caption(nota_banco())
     falhas = st.session_state.get("falhas_login", [])
     falhas = [x for x in falhas if time.time() - x < 60]
@@ -865,10 +865,6 @@ def tela_inicio() -> None:
                        icon=":material/play_arrow:"):
             tentar_iniciar(wk)
         st.caption(texto_etapas(pl))
-    observacoes("inicio")
-    sugestoes()
-    lembrete_copia()
-    recompensas_inicio()
 
     # progresso: semana do plano, consistência e cardio
     ws = R.inicio_semana(t)
@@ -886,16 +882,21 @@ def tela_inicio() -> None:
             ("Plano de 20 semanas", str(cons["aprovadas"]), "semanas concluídas", cons["aprovadas"] / D.SEMANAS_PLANO, "#8e8e93"),
         ]) + ui.semana(dias))
 
-    # peso
+    # alertas e sugestões a partir dos registros
+    observacoes("inicio")
+    sugestoes()
+    lembrete_copia()
+
+    # meta de peso e evolução semanal
     cw, meta = R.peso_atual(S), float(p["pesoMeta"])
     with st.container(border=True):
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Peso atual" if S["weights"] else "Peso inicial", f"{br(cw)} kg")
-        c2.metric("Meta", f"{br(meta)} kg")
-        c3.metric("Faltam", f"{br(max(0, cw - meta))} kg")
+        html_md(ui.grade([("Peso atual" if S["weights"] else "Peso inicial", f"{br(cw)} kg", None, True),
+                          ("Meta", f"{br(meta)} kg", None, False), ("Faltam", f"{br(abs(cw - meta))} kg", None, False)]))
         peso_semanal()
         i = R.imc(S, cw)
         st.caption(f"IMC {br(i)} kg/m² ({R.imc_categoria(i)}): indicador de triagem, não é diagnóstico.")
+
+    recompensas_inicio()
 
     # última sessão
     u = E.ultima_sessao(S)
@@ -1266,6 +1267,10 @@ def tela_sessao() -> None:
     if st.session_state.get("descanso_ate", 0) > time.time() * 1000:
         cronometro(st.session_state.descanso_ate, st.session_state.get("descanso_total", 0),
                    st.session_state.get("descanso_proximo", ""))
+        c1, c2 = st.columns(2)
+        c1.button("+15 s", key="desc_mais", icon=":material/more_time:", use_container_width=True, on_click=_descanso_mais)
+        c2.button("Pular descanso", key="desc_pular", icon=":material/skip_next:", use_container_width=True,
+                  on_click=_descanso_pular)
     if a["workout"] not in ("REC", "OFF"):
         etapas = a.get("etapas") or {}
         with st.expander(f"Aquecimento ({etapas.get('Aquecimento', 10)} min) e volta à calma ({etapas.get('Volta à calma', 5)} min)"):
@@ -1298,6 +1303,15 @@ def tela_sessao() -> None:
         elif c2.button("Descartar", use_container_width=True, icon=":material/delete:"):
             st.session_state.conf_desc = True
             st.rerun()
+
+
+def _descanso_mais() -> None:
+    st.session_state.descanso_ate = max(st.session_state.get("descanso_ate", 0), time.time() * 1000) + 15000
+    st.session_state.descanso_total = int(st.session_state.get("descanso_total", 0)) + 15
+
+
+def _descanso_pular() -> None:
+    st.session_state.descanso_ate = 0
 
 
 def form_finalizar(a: dict) -> None:
@@ -1612,10 +1626,10 @@ def grafico_peso(modo: str, altura: int = 240) -> None:
                                             "stops": [{"offset": 0, "color": "rgba(240,54,74,0)"},
                                                       {"offset": 1, "color": "rgba(240,54,74,0.22)"}]},
                   "interpolate": "monotone"},
-         "encoding": {"y": {"field": "Peso (kg)", "type": "quantitative", "scale": {"domain": dominio}, "title": None}}},
+         "encoding": {"y": {"field": "Peso (kg)", "type": "quantitative", "scale": {"domain": dominio}, "title": "kg"}}},
         {"mark": {"type": "line", "color": "#f0364a", "strokeWidth": 2.5, "interpolate": "monotone",
                   "point": {"color": "#f0364a", "size": 36, "filled": True}},
-         "encoding": {"y": {"field": "Peso (kg)", "type": "quantitative", "scale": {"domain": dominio}, "title": None},
+         "encoding": {"y": {"field": "Peso (kg)", "type": "quantitative", "scale": {"domain": dominio}, "title": "kg"},
                       "tooltip": [{"field": "Data", "type": "nominal"}, {"field": "Peso (kg)", "type": "quantitative"}]}},
     ]
     if mostra_meta:

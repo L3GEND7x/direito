@@ -348,7 +348,8 @@ def test_conta_com_pesagem_inicial_antiga_e_corrigida_ao_entrar():
     loja.salvar(u, S, 0)
     at = entrar(abrir(), "pesoantigo@exemplo.com")
     assert not at.exception and [w["peso"] for w in at.session_state["S"]["weights"]] == [115.0]
-    assert any(m.value == "115,0 kg" for m in at.metric) and any(m.value == "25,0 kg" for m in at.metric)
+    tela = textos(at.main)  # cartões de peso do Início: atual e quanto falta
+    assert "<b>115,0 kg</b>" in tela and "<b>25,0 kg</b>" in tela
     assert loja.carregar_com_versao(u)[0]["weights"][0]["peso"] == 115.0  # já gravado no banco
 
 
