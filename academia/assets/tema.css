@@ -310,42 +310,6 @@ div[data-testid="stMetricLabel"] p { color: var(--text-2) !important; }
 .fl-fim h2 { margin: 0 0 4px !important; }
 
 /* ------------------------------------------------------------ larguras */
-/* ------------------------------------------------------------ Personal IA */
-.fl-ia-cab { display: flex; align-items: center; gap: 14px; margin: 0 0 var(--sp-4); }
-.fl-ia-avatar {
-  flex: 0 0 52px; width: 52px; height: 52px; border-radius: 16px; background: var(--accent-grad); color: #fff;
-  display: grid; place-items: center; font-family: var(--font-display); font-weight: 800; font-size: 1.05rem; letter-spacing: -.02em;
-  box-shadow: 0 10px 24px -12px rgba(240, 54, 74, .7);
-}
-.fl-ia-cab .marca { font-size: var(--fs-caption); font-weight: 700; letter-spacing: .14em; color: var(--accent); text-transform: uppercase; }
-.fl-ia-cab h1 { font-size: var(--fs-title-2) !important; margin: 0 !important; padding: 0 !important; }
-.fl-ia-status { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-size: var(--fs-small); color: var(--text-2); }
-.fl-ia-status span { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.stApp [data-testid="stChatMessage"] {
-  background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4);
-  gap: var(--sp-3);
-}
-.stApp [data-testid="stChatMessage"]:has([data-testid="stChatMessageAvatarUser"]) { background: var(--surface-2); border-color: rgba(240, 54, 74, .28); }
-.stApp [data-testid="stChatMessageAvatarUser"], .stApp [data-testid="stChatMessageAvatarAssistant"] {
-  width: 32px; height: 32px; border-radius: 10px; display: grid; place-items: center;
-}
-.stApp [data-testid="stChatMessageAvatarUser"] { background: var(--surface-3); color: var(--text); }
-.stApp [data-testid="stChatMessageAvatarAssistant"] { background: var(--accent-grad); color: #fff; }
-.stApp [data-testid="stChatMessageAvatarUser"] svg, .stApp [data-testid="stChatMessageAvatarAssistant"] svg { color: inherit; fill: currentColor; }
-/* seletor de fotos do Personal IA em português */
-.st-key-ia_fotos_up [data-testid="stFileUploaderDropzoneInstructions"] > div { display: none; }
-.st-key-ia_fotos_up [data-testid="stFileUploaderDropzoneInstructions"]::after {
-  content: "Toque em “Escolher fotos” ou arraste aqui"; font-size: var(--fs-small); color: var(--text-2);
-}
-.st-key-ia_fotos_up [data-testid="stFileUploaderDropzone"] button { font-size: 0 !important; min-height: 44px; }
-.st-key-ia_fotos_up [data-testid="stFileUploaderDropzone"] button::after { content: "Escolher fotos"; font-size: var(--fs-body); }
-.stApp [data-testid="stChatMessage"] table { border-collapse: collapse; width: 100%; font-size: var(--fs-small); display: block; overflow-x: auto; }
-.stApp [data-testid="stChatMessage"] th, .stApp [data-testid="stChatMessage"] td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; }
-.stApp [data-testid="stChatMessage"] blockquote { border-left: 3px solid var(--warning); margin: 0 0 var(--sp-3); padding: 4px 12px; color: var(--text); }
-.stApp [data-testid="stChatMessage"] h3 { font-size: 1.05rem !important; margin: var(--sp-3) 0 var(--sp-2) !important; }
-.st-key-ia_form [data-testid="stForm"], .stApp [data-testid="stForm"]:has(textarea[aria-label="Mensagem para o Personal IA"]) { position: relative; }
-[class*="st-key-ia_sug_"] button { min-height: 52px; text-align: left; justify-content: flex-start; white-space: normal; line-height: 1.25; }
-
 @media (max-width: 420px) {
   .fl-grade { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .fl-grade.tres { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
