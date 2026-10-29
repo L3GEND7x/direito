@@ -64,6 +64,18 @@ O plano não substitui avaliação médica nem a orientação do profissional de
 - **Acompanhamento automático**, sem chatbot: frases curtas no Início, nos Treinos e na Evolução, calculadas só dos
   registros (frequência, séries, cargas, peso, dor e sessões interrompidas). Nada muda o plano sem confirmação.
 
+- **Treino mais rápido:** a série seguinte já vem com a carga e as repetições da anterior, e "Concluir as N séries
+  iguais" fecha o exercício com um toque.
+- **Medidas corporais** (cintura, quadril, braço e coxa) junto com a pesagem, com comparação e curva em Evolução → Peso.
+- **Sugestões de ajuste com confirmação** no Início (menos dias quando a agenda não está sendo cumprida há 3 semanas;
+  tirar do plano um exercício com dor registrada em 2 treinos). Só mudam algo ao tocar em "Aplicar"; "Agora não"
+  esconde a sugestão por 14 dias.
+- **Relatório em PDF** (Evolução → Relatório) para levar ao profissional, gerado só com os registros da conta.
+- **Instalar na tela inicial:** ícone e manifesto em `static/` (servidos com `enableStaticServing`). Notificações no
+  celular não são possíveis no Streamlit; os lembretes continuam no Início.
+- **Menos requisições ao banco:** a versão dos dados é conferida no máximo a cada 20 s e gravações sem mudança não
+  são enviadas (outra aba que salvou no meio continua sendo detectada pela versão esperada ao salvar).
+
 A pesquisa por trás dessas regras (projetos de código aberto, licenças, estudos, limitações) está em
 [`docs/pesquisa.md`](docs/pesquisa.md).
 
@@ -146,7 +158,9 @@ foco_leve/objetivos.py     efeito de cada objetivo, equipamento e grupo priorit�
 foco_leve/regras.py        segurança, agenda, sessão, progressão, calorias, relatório
 foco_leve/plano.py         plano personalizado de 20 semanas
 foco_leve/monitoramento.py observações automáticas a partir dos registros (sem IA)
-foco_leve/evolucao.py      números da evolução calculados só com dados registrados
+foco_leve/evolucao.py      números da evolução e medidas corporais, só com dados registrados
+foco_leve/relatorio_pdf.py relatório da evolução em PDF (fpdf2)
+static/                    ícones e manifesto para instalar o app na tela inicial
 docs/pesquisa.md           pesquisa: projetos avaliados, estudos, limitações
 foco_leve/armazenamento.py contas, Supabase (REST + RLS), SQLite local e importação de cópias
 supabase/schema.sql        tabela, permissões e políticas de Row Level Security

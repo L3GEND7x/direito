@@ -14,3 +14,5 @@ toolbarMode = "minimal"
 [server]
 # teto do servidor para qualquer upload (cópia de segurança .json no Perfil)
 maxUploadSize = 20
+# arquivos de static/ (ícones e manifesto para instalar o app na tela inicial) servidos em /app/static/
+enableStaticServing = true

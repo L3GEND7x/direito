@@ -28,6 +28,19 @@ AJUSTES_PAGINA = """<script>
     if (!d.querySelector('meta[name="google"][content="notranslate"]')) {
       var m = d.createElement("meta"); m.name = "google"; m.content = "notranslate"; d.head.appendChild(m);
     }
+    // instalar na tela inicial: manifesto, ícone e cor da barra (arquivos de static/, servidos em /app/static/)
+    [["link", {rel: "manifest", href: "app/static/manifest.json"}],
+     ["link", {rel: "apple-touch-icon", href: "app/static/apple-touch-icon.png"}],
+     ["meta", {name: "apple-mobile-web-app-capable", content: "yes"}],
+     ["meta", {name: "mobile-web-app-capable", content: "yes"}],
+     ["meta", {name: "apple-mobile-web-app-title", content: "Foco Leve"}],
+     ["meta", {name: "apple-mobile-web-app-status-bar-style", content: "black"}],
+     ["meta", {name: "theme-color", content: "#000000"}]].forEach(function (x) {
+      var chave = x[1].rel || x[1].name;
+      if (d.head.querySelector('[rel="' + chave + '"],[name="' + chave + '"]')) return;
+      var el = d.createElement(x[0]); Object.keys(x[1]).forEach(function (k) { el.setAttribute(k, x[1][k]); });
+      d.head.appendChild(el);
+    });
   });
   var d = docs[0];
   if (!d || !d.fonts) return;
