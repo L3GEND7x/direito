@@ -53,6 +53,20 @@ quando esses dados mudam, sem alterar os treinos já registrados.
 
 O plano não substitui avaliação médica nem a orientação do profissional de educação física.
 
+## Objetivos, biblioteca e acompanhamento
+
+- **Objetivos em cartões** (um ou vários): emagrecimento, hipertrofia, glúteos, peitoral, treino completo e
+  condicionamento; mais **equipamentos disponíveis** e até 2 **grupos prioritários**. Cada grupo prioritário ganha um
+  exercício a mais em pelo menos 2 treinos por semana; foco muscular soma séries nos compostos depois da adaptação;
+  o cardio segue o objetivo (mínimo de 150 min da OMS). Sem máquinas, o plano usa halteres, barra ou peso do corpo.
+- **Biblioteca de exercícios** (aba Treinos), por grupo muscular, com equipamento, dificuldade, cuidados,
+  alternativas, fontes e o motivo quando um exercício está fora do seu plano.
+- **Acompanhamento automático**, sem chatbot: frases curtas no Início, nos Treinos e na Evolução, calculadas só dos
+  registros (frequência, séries, cargas, peso, dor e sessões interrompidas). Nada muda o plano sem confirmação.
+
+A pesquisa por trás dessas regras (projetos de código aberto, licenças, estudos, limitações) está em
+[`docs/pesquisa.md`](docs/pesquisa.md).
+
 ## Visual
 
 Interface escura inspirada em apps nativos de saúde: preto profundo, superfícies grafite, um único vermelho de destaque,
@@ -126,10 +140,14 @@ exportar | atribuir` faz o mesmo com backup prévio (veja a ajuda do script).
 app.py                     interface (5 abas: Início, Treinos, Evolução, Hábitos, Perfil)
 ui.py                      componentes visuais (anéis, semana, linha do tempo, estados vazios)
 assets/tema.css            sistema de design (variáveis, componentes, barra inferior)
-foco_leve/dados.py         31 exercícios, 8 treinos, alternativas, intensidades de cardio, fontes
+foco_leve/dados.py         exercícios, treinos, alternativas, intensidades de cardio, fontes
+foco_leve/biblioteca.py    grupo muscular, equipamento, dificuldade e referências de cada exercício
+foco_leve/objetivos.py     efeito de cada objetivo, equipamento e grupo prioritário no plano
 foco_leve/regras.py        segurança, agenda, sessão, progressão, calorias, relatório
 foco_leve/plano.py         plano personalizado de 20 semanas
+foco_leve/monitoramento.py observações automáticas a partir dos registros (sem IA)
 foco_leve/evolucao.py      números da evolução calculados só com dados registrados
+docs/pesquisa.md           pesquisa: projetos avaliados, estudos, limitações
 foco_leve/armazenamento.py contas, Supabase (REST + RLS), SQLite local e importação de cópias
 supabase/schema.sql        tabela, permissões e políticas de Row Level Security
 migrar_legado.py           decisão sobre o registro da versão sem contas (listar, exportar, atribuir)

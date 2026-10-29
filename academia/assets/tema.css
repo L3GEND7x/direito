@@ -328,3 +328,19 @@ div[data-testid="stMetricLabel"] p { color: var(--text-2) !important; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
+
+/* ---------------------------------------------------------------- objetivos, acompanhamento e biblioteca */
+/* escolhas em cartões (st.pills): toque grande, selecionado em vermelho */
+[data-testid="stButtonGroup"] { gap: 8px; flex-wrap: wrap; }
+[data-testid="stButtonGroup"] button { min-height: 44px; border-radius: var(--r-md); border: 1px solid var(--line-strong);
+  background: var(--surface-2); color: var(--text); padding: 8px 14px; font-size: var(--fs-small); font-weight: 600; }
+[data-testid="stButtonGroup"] button[kind$="Active"], [data-testid="stButtonGroup"] button[aria-checked="true"] {
+  background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+.fl-obs { display: flex; gap: 10px; align-items: flex-start; background: var(--surface-2); border: 1px solid var(--line);
+  border-left: 3px solid var(--text-3, #8e8e93); border-radius: var(--r-md); padding: 10px 14px; margin: 6px 0;
+  font-size: var(--fs-small); line-height: 1.5; color: var(--text); }
+.fl-obs.ok { border-left-color: var(--success); }
+.fl-obs.alerta { border-left-color: var(--warning); }
+.fl-obs b { font-weight: 600; }
+.fl-ficha-ex { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; font-size: var(--fs-small); margin: 8px 0; }
+.fl-ficha-ex span { color: var(--text-2, #a1a1a6); }

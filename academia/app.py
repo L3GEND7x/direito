@@ -25,7 +25,8 @@ import streamlit.components.v1 as components
 # No Streamlit Cloud, uma atualização do repositório nem sempre reinicia o processo: este arquivo roda na versão
 # nova, mas os módulos do app importados antes continuam na versão antiga (e falta o que foi acrescentado neles).
 # Antes de importá-los, recarrega os que mudaram no disco — na ordem das dependências.
-MODULOS_DO_APP = ("foco_leve.dados", "foco_leve.regras", "foco_leve.plano", "foco_leve.evolucao",
+MODULOS_DO_APP = ("foco_leve.dados", "foco_leve.biblioteca", "foco_leve.regras", "foco_leve.objetivos", "foco_leve.plano",
+                  "foco_leve.monitoramento", "foco_leve.evolucao",
                   "foco_leve.armazenamento", "ui")
 _cascata = False  # depois de recarregar um módulo, recarrega também os seguintes (podem depender dele)
 for _nome in MODULOS_DO_APP:
@@ -43,8 +44,11 @@ for _nome in MODULOS_DO_APP:
 
 import ui
 from foco_leve import armazenamento as A
+from foco_leve import biblioteca as B
 from foco_leve import dados as D
 from foco_leve import evolucao as E
+from foco_leve import monitoramento as M
+from foco_leve import objetivos as O
 from foco_leve import plano as P
 from foco_leve import regras as R
 from foco_leve.regras import br, brx, fmt_d, fmt_dy, num, ok
@@ -403,6 +407,16 @@ def capa(ex_ids, chip: str, titulo: str, texto: str = "", ficha=()) -> None:
                 + (f"<div class='fl-ficha'>{linhas}</div>" if linhas else "") + "</div>", unsafe_allow_html=True)
 
 
+def observacoes(tela: str, limite: int = 3) -> None:
+    """Acompanhamento automático: frases curtas calculadas dos registros, sem alterar o plano."""
+    obs = M.para_tela(S, tela, limite)
+    if not obs:
+        return
+    rotulo = {"ok": "Bom sinal", "alerta": "Atenção", "info": "Acompanhamento"}  # a cor da borda mostra o tipo
+    html_md("".join(f"<div class='fl-obs {o['tipo']}' role='note' aria-label='{rotulo[o['tipo']]}'>"
+                    f"<span>{html.escape(o['texto'])}</span></div>" for o in obs))
+
+
 def cartoes(itens) -> None:
     """Grade de indicadores: (rótulo, valor, nota opcional, destaque)."""
     html_md(ui.grade(itens))
@@ -523,6 +537,38 @@ def validar_perfil(textos: dict) -> tuple[dict, list[str]]:
     return novos, erros
 
 
+def campos_objetivo(chave: str, explicar: bool = True) -> tuple:
+    """Objetivos, equipamentos e grupos prioritários em cartões tocáveis (dentro de um formulário)."""
+    p = S["profile"]
+    objs = st.pills("Objetivo · escolha um ou mais (combinados valem juntos)", list(O.OBJETIVOS), selection_mode="multi",
+                    default=O.objetivos(S), key=f"{chave}_obj",
+                    format_func=lambda k: f"{O.OBJETIVOS[k]['icone']} {O.OBJETIVOS[k]['nome']}")
+    if explicar:  # dentro de outro expander (Início) não cabe um expander: a explicação fica no Perfil e nos Treinos
+        with st.expander("O que muda no plano com cada objetivo"):
+            for o in O.OBJETIVOS.values():
+                st.markdown(f"**{o['nome']}** — {o['resumo']}  \n<small>{html.escape(o['como'])}</small>", unsafe_allow_html=True)
+    equips = st.pills("Equipamentos disponíveis", list(B.EQUIPAMENTOS), selection_mode="multi",
+                      default=[k for k in B.EQUIPAMENTOS if k in O.equipamentos(S)], key=f"{chave}_eq",
+                      format_func=lambda k: B.EQUIPAMENTOS[k])
+    atuais = [g for g in (p.get("prioridades") or []) if g in B.GRUPOS_PRIORIZAVEIS]
+    prios = st.pills(f"Grupos prioritários (opcional, até {O.MAX_PRIORIDADES})", B.GRUPOS_PRIORIZAVEIS, selection_mode="multi",
+                     default=atuais, key=f"{chave}_pr")
+    return objs, equips, prios
+
+
+def validar_objetivo(objs, equips, prios) -> tuple[dict, list[str]]:
+    erros = []
+    if not objs:
+        erros.append("Escolha pelo menos um objetivo.")
+    if not equips:
+        erros.append("Marque pelo menos um tipo de equipamento (peso do corpo vale).")
+    if len(prios or []) > O.MAX_PRIORIDADES:
+        erros.append(f"Escolha no máximo {O.MAX_PRIORIDADES} grupos prioritários: mais que isso não cabe numa sessão.")
+    ordem = list(O.OBJETIVOS)
+    return {"objetivos": sorted(objs or [], key=ordem.index), "equipamentos": [k for k in B.EQUIPAMENTOS if k in (equips or [])],
+            "prioridades": list(prios or [])}, erros
+
+
 def editar_dados() -> None:
     """Edição rápida no Início: muda o perfil e recalcula o plano futuro, sem tocar no histórico."""
     p = S["profile"]
@@ -545,9 +591,13 @@ def editar_dados() -> None:
             tempo = c2.selectbox("Tempo máximo por treino (min)", tempos, index=tempos.index(int(p.get("tempoMax") or 90)))
             lim = st.text_area("Limitações, dores e restrições", p.get("limitacao", ""),
                                placeholder="Ex.: dor no joelho direito ao agachar; hérnia lombar")
+            objs, equips, prios = campos_objetivo("ini", explicar=False)
             st.caption("O plano usa estes dados para escolher exercícios, séries, cardio e duração. Os treinos já registrados não mudam.")
             if st.form_submit_button("Salvar e recalcular", type="primary"):
                 novos, erros = validar_perfil({"pesoMeta": meta, "pesoInicial": ini, "altura": alt, "idade": idade})
+                extra, erros_obj = validar_objetivo(objs, equips, prios)
+                novos.update(extra)
+                erros += erros_obj
                 pv = num(peso_hoje)
                 if peso_hoje.strip() and (not ok(pv) or not 30 <= pv <= 300):
                     erros.append("O peso de hoje deve ficar entre 30 e 300 kg.")
@@ -713,15 +763,19 @@ def form_dados_iniciais() -> None:
                             format_func=lambda k: R.FUSOS[k][0])
         lim = st.text_area("Limitações, dores e restrições (se houver)", p.get("limitacao", ""),
                            placeholder="Ex.: dor no joelho direito ao agachar")
+        objs, equips, prios = campos_objetivo("pri")
         if st.form_submit_button("Continuar", type="primary", use_container_width=True):
             novos, erros = validar_perfil({"pesoInicial": peso, "pesoMeta": meta, "altura": alt, "idade": idade})
+            extra, erros_obj = validar_objetivo(objs, equips, prios)
+            novos.update(extra)
+            erros += erros_obj
             if erros:
                 st.error("Preencha seus dados: " + " ".join(erros))
                 return
             novos.update({"nome": nome.strip(), "dias": int(dias), "tempoMax": int(tempo), "nivel": nivel, "fuso": fuso,
                           "limitacao": lim.strip(), "confirmado": True})
             P.atualizar_perfil(S, novos)
-            S["schedule"] = P.agenda_para(int(dias))
+            S["schedule"] = P.agenda_para(int(dias), novos["objetivos"])
             if not any(w["date"] == t for w in S["weights"]):
                 S["weights"].append({"id": R.novo_id(), "date": t, "peso": novos["pesoInicial"], "cintura": None,
                                      "cond": P.PESAGEM_INICIAL, "obs": ""})
@@ -799,6 +853,7 @@ def tela_inicio() -> None:
                        icon=":material/play_arrow:"):
             tentar_iniciar(wk)
         st.caption(texto_etapas(pl))
+    observacoes("inicio")
 
     # progresso: semana do plano, consistência e cardio
     ws = R.inicio_semana(t)
@@ -921,12 +976,20 @@ def tela_treinos() -> None:
         st.caption(texto_etapas(pl))
     for x in pl["avisos"]:
         st.caption(":material/info: " + x)
+    if pl["sem_equipamento"]:
+        st.caption(":material/info: Sem opção com o seu equipamento hoje: " + ", ".join(pl["sem_equipamento"]).lower()
+                   + ". Os outros exercícios cobrem o treino.")
     if pl["bloqueados"]:
-        st.warning("**Fora do plano por segurança:**  \n" + "  \n".join(f"{R.nome_ex(x)}: {m}" for x, m in pl["bloqueados"]))
+        st.warning("**Fora do plano (segurança, equipamento ou nível):**  \n"
+                   + "  \n".join(f"{R.nome_ex(x)}: {m}" for x, m in pl["bloqueados"]))
     with st.expander(":material/tune: Como este treino foi montado para você"):
         st.markdown("\n".join(f"- {x}" for x in P.resumo_personalizacao(S, pw)))
+        for o in O.objetivos(S):
+            st.caption(f"{O.OBJETIVOS[o]['nome']}: {O.OBJETIVOS[o]['como']}")
         st.caption("A escolha dos exercícios também segue uma ordem própria da sua conta, que muda a cada semana. "
-                   "Mudou peso, nível, dias, tempo ou limitações? Atualize no Perfil ou em “Editar meus dados” no Início.")
+                   "Mudou objetivo, equipamentos, peso, nível, dias, tempo ou limitações? Atualize no Perfil ou em "
+                   "“Editar meus dados” no Início.")
+    observacoes("treinos", 2)
     with st.container():
         if d == t:
             if st.session_state.get("pre_inicio"):
@@ -984,6 +1047,46 @@ def tela_treinos() -> None:
                         "Se algo disso falhar, a mesma semana se repete. Terminar o calendário não basta.")
         with st.expander("Ver o plano das 20 semanas"):
             ver_plano(pw, ws)
+    biblioteca(pw)
+
+
+def biblioteca(semana: int) -> None:
+    """Biblioteca de exercícios por grupo muscular, com o motivo quando um exercício está fora do plano desta conta."""
+    html_md("<div class='fl-secao'>Biblioteca de exercícios</div>")
+    g = st.selectbox("Grupo muscular", B.GRUPOS, key="bib_grupo")
+    so_meus = st.toggle("Só os que cabem no meu plano (objetivo, equipamento, nível e limitações)", key="bib_meus")
+    ids = [x for x in B.por_grupo(g) if not (so_meus and P.motivo_bloqueio(S, x, semana))]
+    if not ids:
+        html_md(ui.vazio("Nenhum exercício", "Nenhum exercício deste grupo cabe no seu plano com os dados atuais."))
+    for x in ids:
+        e, m = D.EXERCICIOS[x], B.meta(x)
+        fora = P.motivo_bloqueio(S, x, semana)
+        with st.expander(e["nome"] + (" · fora do seu plano" if fora else "")):
+            mostrar_fotos(x)
+            presc = (f"{e.get('duracao', 30)} min" if e["tipo"] == "tempo" else
+                     f"{e['series']} × {e['reps']} · descanso {e['descanso']} s (o plano ajusta pela fase e pelo nível)")
+            objs = [O.OBJETIVOS[o]["nome"] for o in B.objetivos_do_exercicio(x)]
+            linhas = [("Principal", m["grupo"]), ("Secundários", ", ".join(m["secundarios"]) or "—"),
+                      ("Músculos", e["musculos"]), ("Objetivos", ", ".join(objs) or "—"),
+                      ("Equipamento", "Nenhum" if set(m["equipamentos"]) == set(B.EQUIPAMENTOS)
+                       else " ou ".join(B.EQUIPAMENTOS[q] for q in m["equipamentos"])),
+                      ("Dificuldade", B.DIFICULDADES[m["dificuldade"]]), ("Prescrição base", presc)]
+            html_md("<div class='fl-ficha-ex'>" + "".join(f"<span>{html.escape(k)}</span><b>{html.escape(v)}</b>" for k, v in linhas)
+                    + "</div>")
+            if fora:
+                st.caption(":material/block: " + fora)
+            st.markdown("\n".join(f"{n}. {passo}" for n, passo in enumerate(e["instrucoes"], 1)))
+            for a in e["alertas"]:
+                st.caption(":material/warning: " + a)
+            alts = D.ALTERNATIVAS.get(x, [])
+            if alts:
+                st.caption("Alternativas: " + ", ".join(R.nome_ex(a) for a in alts))
+            if m["fontes"]:
+                st.markdown("  \n".join(f"<small>[{html.escape(B.REFERENCIAS[f][0])}]({B.REFERENCIAS[f][1]})</small>"
+                                        for f in m["fontes"]), unsafe_allow_html=True)
+            else:
+                st.caption("Fonte: descrição técnica do app. Não há estudo específico deste exercício citado aqui; "
+                           "os princípios gerais (volume, frequência, progressão) seguem o ACSM 2026.")
 
 
 def ver_plano(pw: int, ws: str) -> None:
@@ -1427,7 +1530,7 @@ def grafico_peso(modo: str, altura: int = 240) -> None:
                       "tooltip": [{"field": "Data", "type": "nominal"}, {"field": "Peso (kg)", "type": "quantitative"}]}},
     ]
     if mostra_meta:
-        camadas.append({"mark": {"type": "rule", "color": "#a1a1a6", "strokeDash": [4, 4]}, "encoding": {"y": {"datum": meta}}})
+        camadas.append({"mark": {"type": "rule", "color": "#a1a1a6", "strokeDash": [4, 4]}, "encoding": {"y": {"datum": meta}, "x": {"value": 0}, "x2": {"value": "width"}}})
     grafico(df, {"height": altura, "encoding": {"x": {"field": "Data", "type": "nominal", "sort": list(df["Data"]), "title": None,
                                                       "axis": {"labelAngle": 0, "labelOverlap": True}}},
                  "layer": camadas})
@@ -1449,7 +1552,7 @@ def grafico_barras(linhas: list[dict], y: str, titulo_y: str, ref: float | None 
                                  "tooltip": [{"field": "Semana", "type": "nominal"}, {"field": y, "type": "quantitative"}]
                                  + ([{"field": y2, "type": "quantitative"}] if y2 else [])}})
     if ref:
-        camadas.append({"mark": {"type": "rule", "color": "#a1a1a6", "strokeDash": [4, 4]}, "encoding": {"y": {"datum": ref}}})
+        camadas.append({"mark": {"type": "rule", "color": "#a1a1a6", "strokeDash": [4, 4]}, "encoding": {"y": {"datum": ref}, "x": {"value": 0}, "x2": {"value": "width"}}})
     grafico(df, {"height": altura, "encoding": {"x": {"field": "Semana", "type": "nominal", "sort": list(df["Semana"]),
                                                       "title": None, "axis": {"labelAngle": 0}}},
                  "layer": camadas})
@@ -1549,6 +1652,7 @@ def evolucao_peso() -> None:
 
 
 def evolucao_treinos() -> None:
+    observacoes("evolucao", 6)
     sem = E.semanas_recentes(S, 8)
     linhas = [{"Semana": x["rotulo"], "Concluídos": x["feitos"], "Planejados": x["planejados"], "Cardio (min)": x["cardio"]}
               for x in sem]
@@ -1566,6 +1670,7 @@ def evolucao_treinos() -> None:
             st.caption("Linha tracejada: 150 min, o mínimo semanal recomendado pela OMS.")
         else:
             html_md(ui.vazio("Sem cardio registrado", "Os minutos de cardio concluídos nos treinos aparecem aqui."))
+    evolucao_grupos()
     html_md("<div class='fl-secao'>Cargas: primeiro registro × último</div>")
     historico_cargas()
     html_md("<div class='fl-secao'>Histórico de treinos</div>")
@@ -1582,6 +1687,28 @@ def evolucao_treinos() -> None:
             st.rerun()
 
 
+
+
+def evolucao_grupos() -> None:
+    """Séries concluídas por grupo muscular (últimos 28 dias) e o histórico semanal de um grupo."""
+    sg = M.series_por_grupo(S, R.add_dias(t, -27), t)
+    with st.container(border=True):
+        html_md("<p class='fl-rotulo'>Séries por grupo muscular · últimos 28 dias</p>")
+        if not sg:
+            html_md(ui.vazio("Sem séries registradas", "As séries concluídas aparecem aqui, separadas por grupo muscular."))
+            return
+        pr = set(O.prioridades(S))
+        df = pd.DataFrame([{"Grupo": g, "Séries": n, "Prioridade": "sim" if g in pr else "não"}
+                           for g, n in sorted(sg.items(), key=lambda x: -x[1])])
+        grafico(df, {"height": max(120, 28 * len(df)), "mark": {"type": "bar", "cornerRadiusEnd": 5},
+                     "encoding": {"y": {"field": "Grupo", "type": "nominal", "sort": list(df["Grupo"]), "title": None},
+                                  "x": {"field": "Séries", "type": "quantitative", "title": None},
+                                  "color": {"field": "Prioridade", "type": "nominal", "legend": None,
+                                            "scale": {"domain": ["sim", "não"], "range": ["#f0364a", "#5a5a60"]}},
+                                  "tooltip": [{"field": "Grupo"}, {"field": "Séries", "type": "quantitative"}]}})
+        st.caption("Em vermelho, os grupos prioritários. Conta as séries de musculação concluídas, pelo grupo principal de cada exercício.")
+        g = st.selectbox("Histórico semanal do grupo", list(sg), key="hist_grupo")
+        grafico_barras(M.series_semanais(S, g, 8), "Séries", "Séries", altura=160)
 
 
 def evolucao_relatorio() -> None:
@@ -1683,12 +1810,16 @@ def tela_perfil() -> None:
         local = c1.text_input("Local de treino", p.get("local", ""))
         nivel_atual = next((n for n in NIVEIS if n.lower()[:5] == str(p.get("nivel") or "").lower()[:5]), "Iniciante")
         nivel = c2.selectbox("Nível de experiência", NIVEIS, index=NIVEIS.index(nivel_atual))
-        obj = st.text_input("Objetivo", p.get("objetivo", ""))
+        objs, equips, prios = campos_objetivo("perf")
+        obj = st.text_input("Observação sobre o objetivo (opcional)", p.get("objetivo", ""))
         fuso = st.selectbox("Fuso horário (define o que é “hoje” no app)", list(R.FUSOS),
                             index=list(R.FUSOS).index(p.get("fuso") or R.FUSO_PADRAO), format_func=lambda k: R.FUSOS[k][0])
         lim = st.text_area("Limitações e contraindicações", p.get("limitacao", ""))
         if st.form_submit_button("Salvar perfil", type="primary"):
             novos, erros = validar_perfil(vals)
+            extra, erros_obj = validar_objetivo(objs, equips, prios)
+            novos.update(extra)
+            erros += erros_obj
             if erros:
                 st.error(" ".join(erros))
             else:

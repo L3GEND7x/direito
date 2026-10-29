@@ -11,6 +11,7 @@ import math
 import re
 
 from . import dados as D
+from . import objetivos as O
 from . import regras as R
 
 PESAGEM_INICIAL = "Informado no primeiro acesso"
@@ -45,7 +46,7 @@ def resumo_personalizacao(S: dict, semana: int) -> list[str]:
     n = {"iniciante": "Iniciante: 2 séries nas 2 primeiras semanas e exercícios complementares só a partir da fase 2",
          "intermediario": "Intermediário: exercícios complementares desde a 1ª semana",
          "avancado": "Avançado: exercícios complementares desde a 1ª semana e 4 séries nos compostos a partir da fase 2"}[nivel(S)]
-    out = [n, f"{int(p.get('dias') or 0)} dia(s) de treino por semana, até {int(p.get('tempoMax') or 90)} min por sessão"]
+    out = O.resumo(S) + [n, f"{int(p.get('dias') or 0)} dia(s) de treino por semana, até {int(p.get('tempoMax') or 90)} min por sessão"]
     i = imc_atual(S)
     if R.ok(i):
         out.append(f"IMC {R.br(i)}: " + ("cardio e exercícios de baixo impacto nesta fase" if baixo_impacto(S, semana)
@@ -104,13 +105,11 @@ def regioes_limitadas(S: dict) -> dict[str, str]:
 
 
 def cardio_semanal_alvo(S: dict) -> int:
-    """Quanto mais longe da meta, mais perto do topo da faixa da OMS (150 a 300 min)."""
+    """Emagrecimento: quanto mais longe da meta, mais perto do topo da faixa da OMS (150 a 300 min).
+    Os outros objetivos ficam no mínimo da OMS; condicionamento sobe para 200 min."""
     falta = R.peso_atual(S) - float(S["profile"]["pesoMeta"])
-    if falta > 10:
-        return 250
-    if falta > 3:
-        return 200
-    return 150
+    pelo_peso = 250 if falta > 10 else (200 if falta > 3 else 150)
+    return O.cardio_semanal_alvo(S, pelo_peso)
 
 
 # ---------------------------------------------------------------- exercícios permitidos
@@ -169,7 +168,7 @@ def motivo_bloqueio(S: dict, ex_id: str, semana: int) -> str:
     if ex_id in D.EXERCICIOS and D.EXERCICIOS[ex_id].get("cardio") and baixo_impacto(S, semana) \
             and ex_id not in D.CARDIO_BAIXO_IMPACTO:
         return "Deixado para depois: nesta fase o cardio é de baixo impacto."
-    return ""
+    return O.falta_equipamento(S, ex_id) or O.dificil_demais(S, ex_id, nivel(S))
 
 
 def digitos_da_semana(semana: int, bases: list[int]) -> list[int]:
@@ -194,7 +193,10 @@ def escolher_na_vaga(S: dict, opcoes: list[str], semana: int, inicio: int, usado
 
 
 def lista_cardio(S: dict, semana: int) -> list[str]:
-    return D.CARDIO_BAIXO_IMPACTO if baixo_impacto(S, semana) else D.CARDIO_TODOS
+    lista = D.CARDIO_BAIXO_IMPACTO if baixo_impacto(S, semana) else D.CARDIO_TODOS
+    if O.tem_todos_os_equipamentos(S):
+        return lista
+    return [x for x in lista if not O.falta_equipamento(S, x)] or ["caminhada_livre"]
 
 
 def escolher_cardio(S: dict, semana: int, inicio: int, preferido: str | None = None) -> str | None:
@@ -206,7 +208,10 @@ def escolher_cardio(S: dict, semana: int, inicio: int, preferido: str | None = N
         ex_id = lista[(inicio + k) % n]
         if not motivo_bloqueio(S, ex_id, semana):
             return ex_id
-    return "ergometro_bracos" if not motivo_bloqueio(S, "ergometro_bracos", semana) else None
+    for reserva in ("caminhada_livre", "ergometro_bracos"):
+        if reserva not in lista and not motivo_bloqueio(S, reserva, semana):
+            return reserva
+    return None
 
 
 def prescricao(S: dict, ex_id: str, semana: int) -> dict:
@@ -217,8 +222,9 @@ def prescricao(S: dict, ex_id: str, semana: int) -> dict:
     if b["tipo"] == "carga":
         if nivel(S) == "iniciante" and semana <= 2:
             p["series"] = 2
-        elif nivel(S) == "avancado" and fase_da_semana(semana)[0] >= 1 and ex_id not in D.ISOLADOS:
-            p["series"] = 4  # compostos com uma série a mais depois da adaptação
+        elif fase_da_semana(semana)[0] >= 1 and ex_id not in D.ISOLADOS and (
+                nivel(S) == "avancado" or (nivel(S) == "intermediario" and O.foco_muscular(S))):
+            p["series"] = 4  # compostos com uma série a mais depois da adaptação (mais volume semanal)
         if p["descanso"] >= 60:
             p["descanso"] = fase["descanso"]
     else:
@@ -252,7 +258,8 @@ def plano_do_dia(S: dict, data: str, semana: int | None = None, wk: str | None =
     dia = R.dia_js(data)
     out = {"wk": wk, "nome": W["nome"], "curto": W["curto"], "obj": W["obj"], "data": data, "semana": semana,
            "fase_idx": fase_idx, "fase": fase, "objetivo_semana": objetivo_da_semana(semana),
-           "itens": [], "etapas": {}, "total": 0, "avisos": [], "bloqueados": [], "personalizado": False}
+           "itens": [], "etapas": {}, "total": 0, "avisos": [], "bloqueados": [], "sem_equipamento": [],
+           "personalizado": False}
     if wk == "OFF":
         return out
     if wk == "REC":
@@ -274,7 +281,7 @@ def plano_do_dia(S: dict, data: str, semana: int | None = None, wk: str | None =
                 elif x not in forca:
                     forca.append(x)
     elif wk in D.MODELOS:
-        vagas = D.MODELOS[wk]
+        vagas = O.vagas_do_treino(S, wk)
         # o cardio é o dígito que muda toda semana; depois as vagas fixas e, por último, as da fase 2.
         # Mesmo com exercícios bloqueados, duas semanas seguidas nunca ficam iguais.
         ordem = [i for i, v in enumerate(vagas) if not v[2]] + [i for i, v in enumerate(vagas) if v[2]]
@@ -282,12 +289,14 @@ def plano_do_dia(S: dict, data: str, semana: int | None = None, wk: str | None =
         dig = digitos_da_semana(semana + semente(S), [len(lista_cardio(S, semana))] + [len(vagas[i][1]) for i in ordem])
         cardio_inicio = dig[0]
         inicio_vaga = {i: dig[k + 1] for k, i in enumerate(ordem)}
-        for vaga, (_, opcoes, so_fase2) in enumerate(vagas):
+        for vaga, (rotulo, opcoes, so_fase2) in enumerate(vagas):
             if so_fase2 and fase_idx == 0 and nivel(S) == "iniciante":
                 continue  # quem já treina recebe os exercícios complementares desde a primeira semana
             ex_id = escolher_na_vaga(S, opcoes, semana, inicio_vaga[vaga], set(forca))
             if ex_id:
                 forca.append(ex_id)
+            elif all(x in forca or O.falta_equipamento(S, x) for x in opcoes):
+                out["sem_equipamento"].append(rotulo)  # não é questão de segurança: só falta o aparelho
             else:
                 out["bloqueados"].append((opcoes[0], motivo_bloqueio(S, opcoes[0], semana) or "Sem opção liberada."))
     else:
@@ -303,12 +312,15 @@ def plano_do_dia(S: dict, data: str, semana: int | None = None, wk: str | None =
 
     alvo = float(S["profile"].get("tempoMax") or 90)
     lo, hi = fase["cardio"]
+    minimo = CARDIO_MINIMO
+    if not O.foco_cardio(S) and wk != "CARDIO":
+        lo, hi, minimo = 20, 30, 20  # foco muscular: o cardio é o mínimo de saúde, o tempo vai para a musculação
     teto = (50 if fase_idx == 0 else 65) if wk == "CARDIO" else CARDIO_MAXIMO
     if wk == "CARDIO":
         cardio = teto
     else:
         n_dias = sum(1 for v in S["schedule"].values() if v in D.TREINOS_COM_CARDIO) or 1
-        cardio = max(CARDIO_MINIMO, lo, min(hi, round(cardio_semanal_alvo(S) / n_dias)))
+        cardio = max(minimo, lo, min(hi, round(cardio_semanal_alvo(S) / n_dias)))
     if wk in ("LA", "LB") and not forca and R.sintomas(S):
         out["avisos"].append("Exercícios de pernas bloqueados hoje: troque para um treino de superiores em "
                              "“Trocar o treino de hoje”, ou descanse.")
@@ -322,7 +334,7 @@ def plano_do_dia(S: dict, data: str, semana: int | None = None, wk: str | None =
     # Cabe no tempo: o cardio desce até o piso da fase, depois saem isolados do fim,
     # depois o cardio desce até 30 min e, por último, os exercícios ficam com 2 séries.
     if cardio_id and cardio_id != "ergometro_bracos" and total() > alvo:
-        cardio = max(CARDIO_MINIMO, lo, cardio - math.ceil(total() - alvo))
+        cardio = max(minimo, lo, cardio - math.ceil(total() - alvo))
     cortes = []
     while total() > alvo and len(itens) > MIN_EXERCICIOS_FORCA:
         iso = [k for k, it in enumerate(itens) if it["id"] in D.ISOLADOS]
@@ -330,7 +342,7 @@ def plano_do_dia(S: dict, data: str, semana: int | None = None, wk: str | None =
             break
         cortes.append(R.nome_ex(itens.pop(iso[-1])["id"]))
     if cardio_id and cardio_id != "ergometro_bracos" and total() > alvo:
-        cardio = max(CARDIO_MINIMO, cardio - math.ceil(total() - alvo))
+        cardio = max(minimo, cardio - math.ceil(total() - alvo))
     if total() > alvo:
         for it in itens:
             if D.EXERCICIOS[it["id"]]["tipo"] == "carga" and int(it["series"]) > 2:
@@ -350,7 +362,7 @@ def plano_do_dia(S: dict, data: str, semana: int | None = None, wk: str | None =
     out["etapas"] = {"Aquecimento": AQUECIMENTO_MIN, "Musculação": int(round(minutos_forca(itens))),
                      "Cardio": int(cardio) if cardio_id else 0, "Volta à calma": VOLTA_CALMA_MIN}
     out["total"] = int(round(total()))
-    if out["total"] < 85 and alvo >= 90:
+    if out["total"] < 85 and alvo >= 90 and O.foco_cardio(S):
         out["avisos"].append("Sessão abaixo de 90 min nesta fase: o volume cresce aos poucos, conforme a recuperação.")
     if alvo < 90:
         out["avisos"].append(f"Tempo máximo definido em {R.brx(alvo)} min, abaixo da meta de 90 min do plano.")
@@ -416,9 +428,10 @@ def semana_do_programa(S: dict) -> dict:
 
 
 # ---------------------------------------------------------------- perfil e agenda
-def agenda_para(dias: int) -> dict:
+def agenda_para(dias: int, objetivos: list[str] | None = None) -> dict:
     dias = max(1, min(7, int(dias)))
-    return {str(d): D.AGENDAS_POR_DIAS[dias].get(str(d), "OFF") for d in range(7)}
+    base = O.agenda_para(dias, objetivos) or D.AGENDAS_POR_DIAS[dias]
+    return {str(d): base.get(str(d), "OFF") for d in range(7)}
 
 
 def sincronizar_pesagem_inicial(S: dict) -> bool:
@@ -438,6 +451,8 @@ def atualizar_perfil(S: dict, novos: dict) -> list[str]:
     p = S["profile"]
     mudou = [k for k, v in novos.items() if p.get(k) != v]
     dias_antes = p.get("dias")
+    obj_antes = O.objetivos(S)
+    agenda_sugerida = S["schedule"] == agenda_para(int(dias_antes or 0) or 1, obj_antes)
     p.update(novos)
     if "pesoInicial" in mudou:
         # a pesagem criada no primeiro acesso é o próprio peso inicial: corrigir um corrige o outro
@@ -446,5 +461,8 @@ def atualizar_perfil(S: dict, novos: dict) -> list[str]:
             if w.get("cond") == PESAGEM_INICIAL:
                 w["peso"] = novos["pesoInicial"]
     if "dias" in novos and int(novos["dias"]) != int(dias_antes or 0):
-        S["schedule"] = agenda_para(novos["dias"])
+        S["schedule"] = agenda_para(novos["dias"], O.objetivos(S))
+    elif "objetivos" in mudou and agenda_sugerida:
+        # a agenda que o app sugeriu acompanha o objetivo; uma agenda montada à mão não é tocada
+        S["schedule"] = agenda_para(int(p.get("dias") or 1), O.objetivos(S))
     return mudou

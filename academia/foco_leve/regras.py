@@ -423,6 +423,9 @@ def recomendacao(S: dict, ex_id: str) -> str:
     if e.get("semCarga"):
         return f"Último registro em {fmt_d(last['date'])}. Quando completar todas as séries com folga, aumente 5 a 10 segundos por série."
     alvo = int(reps_alvo(e) or 0)
+    if e.get("corpo") and last["max"] is None:
+        return (f"Último registro em {fmt_d(last['date'])}. Peso do corpo: quando passar de {alvo} repetições com boa "
+                "técnica em 2 treinos seguidos, use a variação mais difícil ou segure um halter (e anote a carga).")
     dois = h[-2:]
     pronto = last["max"] is not None and len(dois) == 2 and all(
         x["setsDone"] == x["setsTotal"] and not x["pain"]
