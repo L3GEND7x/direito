@@ -171,6 +171,22 @@ def motivo_bloqueio(S: dict, ex_id: str, semana: int) -> str:
     return O.falta_equipamento(S, ex_id) or O.dificil_demais(S, ex_id, nivel(S))
 
 
+def alternativas_para(S: dict, ex_id: str, semana: int, excluir=()) -> list[str]:
+    """Trocas possíveis para um exercício: as alternativas do catálogo e os outros exercícios do mesmo grupo muscular,
+    só os que o plano também aceitaria hoje (limitações, proibidos, sintomas, equipamento e nível)."""
+    from . import biblioteca as B
+    if ex_id not in D.EXERCICIOS or D.EXERCICIOS[ex_id].get("cardio"):
+        return []
+    tipo = D.EXERCICIOS[ex_id]["tipo"]
+    candidatos = list(D.ALTERNATIVAS.get(ex_id, [])) + [x for x in B.por_grupo(B.grupo(ex_id)) if x != ex_id]
+    out = []
+    for x in candidatos:
+        if (x not in out and x not in excluir and x != ex_id and x in D.EXERCICIOS and D.EXERCICIOS[x]["tipo"] == tipo
+                and not D.EXERCICIOS[x].get("cardio") and not motivo_bloqueio(S, x, semana)):
+            out.append(x)
+    return out
+
+
 def digitos_da_semana(semana: int, bases: list[int]) -> list[int]:
     """Numeração mista: semanas seguidas geram combinações diferentes de opções.
 

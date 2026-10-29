@@ -76,6 +76,13 @@ O plano não substitui avaliação médica nem a orientação do profissional de
 - **Menos requisições ao banco:** a versão dos dados é conferida no máximo a cada 20 s e gravações sem mudança não
   são enviadas (outra aba que salvou no meio continua sendo detectada pela versão esperada ao salvar).
 
+- **No treino:** "Ficha do exercício" com grupo, equipamento, cuidados e fontes; a troca oferece as alternativas e
+  os outros exercícios do mesmo grupo que o plano aceitaria hoje.
+- **Evolução → Treinos:** esta semana × a anterior (treinos, séries, volume, cardio), gráfico de carga de cada
+  exercício, **metas de carga** com barra de progresso e **recordes pessoais**.
+- **Lembrete de cópia de segurança** no Início quando há treinos novos e a última cópia tem mais de 30 dias.
+  (Cópia por e-mail exigiria um serviço de envio configurado; não foi feita.)
+
 A pesquisa por trás dessas regras (projetos de código aberto, licenças, estudos, limitações) está em
 [`docs/pesquisa.md`](docs/pesquisa.md).
 

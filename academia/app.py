@@ -448,6 +448,22 @@ def _dispensar_sugestao(sug: dict) -> None:
     salvar()
 
 
+def _copia_baixada() -> None:
+    S["ultimaCopia"] = t
+    salvar()
+
+
+def lembrete_copia() -> None:
+    """Lembra de baixar a cópia de segurança quando há treinos novos e a última cópia tem mais de 30 dias."""
+    if not S["sessions"]:
+        return
+    ultima, recente = S.get("ultimaCopia"), max(s["date"] for s in S["sessions"])
+    if ultima and (R.dias_entre(ultima, t) < 30 or recente <= ultima):
+        return
+    texto = (f"Sua última cópia de segurança é de {fmt_dy(ultima)}." if ultima else "Você ainda não baixou uma cópia de segurança.")
+    st.caption(f":material/backup: {texto} Os dados ficam salvos na sua conta; a cópia é uma garantia extra, em Perfil → Cópia de segurança.")
+
+
 def sugestoes() -> None:
     """Ajustes sugeridos pelos registros: só mudam o plano quando a pessoa toca em “Aplicar”."""
     for sug in M.sugestoes(S):
@@ -899,6 +915,7 @@ def tela_inicio() -> None:
         st.caption(texto_etapas(pl))
     observacoes("inicio")
     sugestoes()
+    lembrete_copia()
 
     # progresso: semana do plano, consistência e cardio
     ws = R.inicio_semana(t)
@@ -1104,34 +1121,41 @@ def biblioteca(semana: int) -> None:
     if not ids:
         html_md(ui.vazio("Nenhum exercício", "Nenhum exercício deste grupo cabe no seu plano com os dados atuais."))
     for x in ids:
-        e, m = D.EXERCICIOS[x], B.meta(x)
         fora = P.motivo_bloqueio(S, x, semana)
-        with st.expander(e["nome"] + (" · fora do seu plano" if fora else "")):
-            mostrar_fotos(x)
-            presc = (f"{e.get('duracao', 30)} min" if e["tipo"] == "tempo" else
-                     f"{e['series']} × {e['reps']} · descanso {e['descanso']} s (o plano ajusta pela fase e pelo nível)")
-            objs = [O.OBJETIVOS[o]["nome"] for o in B.objetivos_do_exercicio(x)]
-            linhas = [("Principal", m["grupo"]), ("Secundários", ", ".join(m["secundarios"]) or "—"),
-                      ("Músculos", e["musculos"]), ("Objetivos", ", ".join(objs) or "—"),
-                      ("Equipamento", "Nenhum" if set(m["equipamentos"]) == set(B.EQUIPAMENTOS)
-                       else " ou ".join(B.EQUIPAMENTOS[q] for q in m["equipamentos"])),
-                      ("Dificuldade", B.DIFICULDADES[m["dificuldade"]]), ("Prescrição base", presc)]
-            html_md("<div class='fl-ficha-ex'>" + "".join(f"<span>{html.escape(k)}</span><b>{html.escape(v)}</b>" for k, v in linhas)
-                    + "</div>")
-            if fora:
-                st.caption(":material/block: " + fora)
-            st.markdown("\n".join(f"{n}. {passo}" for n, passo in enumerate(e["instrucoes"], 1)))
-            for a in e["alertas"]:
-                st.caption(":material/warning: " + a)
-            alts = D.ALTERNATIVAS.get(x, [])
-            if alts:
-                st.caption("Alternativas: " + ", ".join(R.nome_ex(a) for a in alts))
-            if m["fontes"]:
-                st.markdown("  \n".join(f"<small>[{html.escape(B.REFERENCIAS[f][0])}]({B.REFERENCIAS[f][1]})</small>"
-                                        for f in m["fontes"]), unsafe_allow_html=True)
-            else:
-                st.caption("Fonte: descrição técnica do app. Não há estudo específico deste exercício citado aqui; "
-                           "os princípios gerais (volume, frequência, progressão) seguem o ACSM 2026.")
+        with st.expander(D.EXERCICIOS[x]["nome"] + (" · fora do seu plano" if fora else "")):
+            ficha_exercicio(x, semana)
+
+
+def ficha_exercicio(x: str, semana: int, fotos: bool = True) -> None:
+    """Ficha completa do exercício (biblioteca e treino em andamento)."""
+    e, m = D.EXERCICIOS[x], B.meta(x)
+    fora = P.motivo_bloqueio(S, x, semana)
+    if fotos:
+        mostrar_fotos(x)
+    presc = (f"{e.get('duracao', 30)} min" if e["tipo"] == "tempo" else
+             f"{e['series']} × {e['reps']} · descanso {e['descanso']} s (o plano ajusta pela fase e pelo nível)")
+    objs = [O.OBJETIVOS[o]["nome"] for o in B.objetivos_do_exercicio(x)]
+    linhas = [("Principal", m["grupo"]), ("Secundários", ", ".join(m["secundarios"]) or "—"),
+              ("Músculos", e["musculos"]), ("Objetivos", ", ".join(objs) or "—"),
+              ("Equipamento", "Nenhum" if set(m["equipamentos"]) == set(B.EQUIPAMENTOS)
+               else " ou ".join(B.EQUIPAMENTOS[q] for q in m["equipamentos"])),
+              ("Dificuldade", B.DIFICULDADES[m["dificuldade"]]), ("Prescrição base", presc)]
+    html_md("<div class='fl-ficha-ex'>" + "".join(f"<span>{html.escape(k)}</span><b>{html.escape(v)}</b>" for k, v in linhas)
+            + "</div>")
+    if fora:
+        st.caption(":material/block: " + fora)
+    st.markdown("\n".join(f"{n}. {passo}" for n, passo in enumerate(e["instrucoes"], 1)))
+    for a in e["alertas"]:
+        st.caption(":material/warning: " + a)
+    alts = D.ALTERNATIVAS.get(x, [])
+    if alts:
+        st.caption("Alternativas: " + ", ".join(R.nome_ex(a) for a in alts))
+    if m["fontes"]:
+        st.markdown("  \n".join(f"<small>[{html.escape(B.REFERENCIAS[f][0])}]({B.REFERENCIAS[f][1]})</small>"
+                                for f in m["fontes"]), unsafe_allow_html=True)
+    else:
+        st.caption("Fonte: descrição técnica do app. Não há estudo específico deste exercício citado aqui; "
+                   "os princípios gerais (volume, frequência, progressão) seguem o ACSM 2026.")
 
 
 def ver_plano(pw: int, ws: str) -> None:
@@ -1479,9 +1503,10 @@ def bloco_cardio(i: int, se: dict, e: dict, sid: str) -> None:
 def detalhes_exercicio(i: int, se: dict, e: dict, sid: str) -> None:
     semana = S["active"].get("semana") or 1
     # a troca só oferece o que o plano também aceitaria: limitações, proibidos e sintomas de hoje valem aqui também
-    alts = [x for x in D.ALTERNATIVAS.get(se["id"], []) if x in D.EXERCICIOS and not P.motivo_bloqueio(S, x, semana)]
+    na_sessao = [x["id"] for x in S["active"]["ex"]]
+    alts = P.alternativas_para(S, se["id"], semana, excluir=na_sessao)
     if alts and not any(x["done"] for x in se["sets"]) and not e.get("cardio"):
-        tr = st.selectbox("Aparelho ocupado? Trocar por", [""] + alts,
+        tr = st.selectbox("Aparelho ocupado ou desconfortável? Trocar por", [""] + alts,
                           format_func=lambda x: "Manter este exercício" if not x else R.nome_ex(x), key=f"sw{sid}")
         if tr:
             S["active"]["ex"][i] = R.nova_entrada(S, tr, se.get("presc"))
@@ -1507,14 +1532,11 @@ def detalhes_exercicio(i: int, se: dict, e: dict, sid: str) -> None:
             se["pain"] = txt
             salvar()
     c1, c2 = st.columns(2)
-    with c1.popover("Como executar", icon=":material/info:", use_container_width=True):
-        if se.get("done"):
-            mostrar_fotos(se["id"])
-        st.caption("Músculos: " + e["musculos"])
-        for n_, passo in enumerate(e["instrucoes"], 1):
-            st.markdown(f"{n_}. {passo}")
-        for al in e["alertas"]:
-            st.caption(":material/warning: " + al)
+    with c1.popover("Ficha do exercício", icon=":material/info:", use_container_width=True):
+        ficha_exercicio(se["id"], semana, fotos=bool(se.get("done")))  # aberto, as fotos já estão no topo
+        meta = (S.get("metasCarga") or {}).get(se["id"])
+        if meta:
+            st.caption(f":material/flag: Sua meta: {brx(meta)} kg")
     if not se.get("done") and c2.button("Marcar como concluído", key=f"exd{sid}", use_container_width=True,
                                         help="Para quando você fez o exercício sem registrar todas as séries"):
         se["done"] = True
@@ -1739,8 +1761,77 @@ def evolucao_medidas() -> None:
                                   "tooltip": [{"field": "Data"}, {"field": "cm", "type": "quantitative"}]}})
 
 
+def evolucao_semanas() -> None:
+    """Esta semana (até hoje) ao lado da anterior."""
+    c = E.comparar_semanas(S)
+    a, b = c["atual"], c["anterior"]
+
+    def dif(k, unidade=""):
+        d = a[k] - b[k]
+        return f"semana passada: {br(b[k], 0)}{unidade}" + (f" ({'+' if d > 0 else ''}{br(d, 0)})" if b[k] or a[k] else "")
+    html_md("<p class='fl-rotulo'>Esta semana × anterior</p>")
+    html_md(ui.grade([("Treinos", br(a["treinos"], 0), dif("treinos"), False),
+                      ("Séries", br(a["series"], 0), dif("series"), False),
+                      ("Volume", f"{br(a['volume'], 0)} kg", dif("volume", " kg"), False),
+                      ("Cardio", f"{br(a['cardio'], 0)} min", dif("cardio", " min"), False)]))
+
+
+def evolucao_exercicio() -> None:
+    """Carga de cada exercício ao longo do tempo, meta de carga e recordes."""
+    html_md("<div class='fl-secao'>Por exercício</div>")
+    exs = E.exercicios_com_carga(S)
+    if not exs:
+        html_md(ui.vazio("Sem cargas registradas", "O gráfico de cada exercício aparece depois do primeiro treino com carga anotada."))
+        return
+    with st.container(border=True):
+        x = st.selectbox("Exercício", exs, format_func=R.nome_ex, key="ev_ex")
+        h = E.cargas_do_exercicio(S, x)
+        metas = S.get("metasCarga") or {}
+        df = pd.DataFrame([{"ordem": n, "Data": fmt_d(d), "Carga (kg)": v} for n, (d, v) in enumerate(h)])
+        camadas = [{"mark": {"type": "line", "color": "#f0364a", "strokeWidth": 2.5, "point": {"color": "#f0364a", "size": 36}},
+                    "encoding": {"y": {"field": "Carga (kg)", "type": "quantitative", "scale": {"zero": False}, "title": None},
+                                 "tooltip": [{"field": "Data"}, {"field": "Carga (kg)", "type": "quantitative"}]}}]
+        if x in metas:
+            camadas.append({"mark": {"type": "rule", "color": "#a1a1a6", "strokeDash": [4, 4]},
+                            "encoding": {"y": {"datum": float(metas[x])}, "x": {"value": 0}, "x2": {"value": "width"}}})
+        grafico(df, {"height": 170, "encoding": {"x": {"field": "ordem", "type": "ordinal", "title": None,
+                                                       "axis": {"labelExpr": "''", "ticks": False}}}, "layer": camadas})
+        st.caption(f"{len(h)} registro(s): de {brx(h[0][1])} kg ({fmt_d(h[0][0])}) a {brx(h[-1][1])} kg ({fmt_d(h[-1][0])}), "
+                   f"melhor {brx(max(v for _, v in h))} kg." + (" Linha tracejada: sua meta." if x in metas else ""))
+        c1, c2 = st.columns([3, 2])
+        alvo = c1.text_input("Meta de carga (kg)", brx(metas[x]) if x in metas else "", key=f"meta_{x}", placeholder="Ex.: 50")
+        c2.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+        if c2.button("Salvar meta", key=f"meta_ok_{x}", use_container_width=True):
+            v = num(alvo)
+            if alvo.strip() and (not ok(v) or not 0 < v <= 500):
+                st.error("Use um número entre 0 e 500 kg.")
+            else:
+                novas = dict(metas)
+                if alvo.strip():
+                    novas[x] = round(v, 1)
+                else:
+                    novas.pop(x, None)
+                S["metasCarga"] = novas
+                salvar()
+                st.rerun()
+    mt = E.metas_de_carga(S)
+    if mt:
+        html_md("<p class='fl-rotulo'>Metas de carga</p>")
+        for m in mt:
+            st.progress(m["progresso"], text=f"{m['nome']}: {brx(m['melhor'] or 0)} de {brx(m['meta'])} kg"
+                        + (" · atingida" if m["atingida"] else ""))
+        st.caption("Meta é referência, não obrigação: suba a carga só pela regra de progressão e sem dor.")
+    rc = E.recordes(S, 8)
+    if rc:
+        html_md("<p class='fl-rotulo'>Recordes pessoais</p>")
+        st.dataframe(pd.DataFrame([{"Exercício": r["nome"], "Melhor carga": f"{brx(r['carga'])} kg",
+                                    "Quando": fmt_d(r["data"]) + (" · novo" if r["novo"] else "")} for r in rc]),
+                     hide_index=True, use_container_width=True)
+
+
 def evolucao_treinos() -> None:
     observacoes("evolucao", 6)
+    evolucao_semanas()
     sem = E.semanas_recentes(S, 8)
     linhas = [{"Semana": x["rotulo"], "Concluídos": x["feitos"], "Planejados": x["planejados"], "Cardio (min)": x["cardio"]}
               for x in sem]
@@ -1759,6 +1850,7 @@ def evolucao_treinos() -> None:
         else:
             html_md(ui.vazio("Sem cardio registrado", "Os minutos de cardio concluídos nos treinos aparecem aqui."))
     evolucao_grupos()
+    evolucao_exercicio()
     html_md("<div class='fl-secao'>Cargas: primeiro registro × último</div>")
     historico_cargas()
     html_md("<div class='fl-secao'>Histórico de treinos</div>")
@@ -2065,7 +2157,10 @@ def tela_perfil() -> None:
 
     html_md("<div class='fl-secao'>Cópia de segurança</div>")
     dados_json = json.dumps({k: v for k, v in S.items() if not k.startswith("_")}, ensure_ascii=False, indent=1)
-    st.download_button("Baixar cópia (.json)", dados_json.encode("utf-8"), file_name=f"foco-leve-{t}.json", mime="application/json")
+    st.download_button("Baixar cópia (.json)", dados_json.encode("utf-8"), file_name=f"foco-leve-{t}.json", mime="application/json",
+                       on_click=_copia_baixada)
+    if S.get("ultimaCopia"):
+        st.caption(f"Última cópia baixada em {fmt_dy(S['ultimaCopia'])}.")
     up = st.file_uploader("Restaurar a partir de uma cópia (.json do app Python ou da versão web)", type=["json", "txt"])
     if up is not None:
         st.warning("Restaurar **substitui todos os registros atuais** pelos da cópia. Baixe a cópia atual acima antes, se quiser guardá-la.")

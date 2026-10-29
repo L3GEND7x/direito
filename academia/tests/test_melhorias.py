@@ -1,6 +1,7 @@
 """Registro rápido de séries, medidas corporais, sugestões com confirmação e relatório em PDF."""
 import pytest
 
+from foco_leve import dados as D
 from foco_leve import evolucao as E
 from foco_leve import monitoramento as M
 from foco_leve import plano as P
@@ -102,3 +103,43 @@ def test_pdf_nao_altera_o_estado(S):
     antes = R.copia(S)
     RP.gerar(S)
     assert R.copia(S) == antes
+
+
+# ---------------------------------------------------------------- troca, histórico por exercício, metas, recordes, semanas
+def test_troca_oferece_mesmo_grupo_e_respeita_limitacoes(S):
+    alts = P.alternativas_para(S, "leg_press", 6)
+    assert "hack_maquina" in alts and "agachamento_goblet" in alts  # mesmo grupo (quadríceps), fora das ALTERNATIVAS
+    assert all(not D.EXERCICIOS[x].get("cardio") for x in alts)
+    S["profile"]["limitacao"] = "dor no joelho"
+    assert not set(P.alternativas_para(S, "leg_press", 6)) & set(D.ARTICULACOES["joelho"])
+    assert "hack_maquina" not in P.alternativas_para(S, "leg_press", 6, excluir=["hack_maquina"])
+    assert P.alternativas_para(S, "esteira_caminhada", 6) == []
+
+
+def test_cargas_metas_e_recordes(S):
+    hoje = R.hoje()
+    S["sessions"] = [sessao(R.add_dias(hoje, -k), [("leg_press", c, "nenhum")], n=10 - k)
+                     for k, c in ((20, 80), (10, 100), (3, 95))]
+    assert E.cargas_do_exercicio(S, "leg_press") == [(R.add_dias(hoje, -20), 80.0), (R.add_dias(hoje, -10), 100.0),
+                                                     (R.add_dias(hoje, -3), 95.0)]
+    S["sessions"].append(sessao(R.add_dias(hoje, -1), [("prancha", 5, "nenhum")], n=20))  # sem carga: fica de fora
+    assert E.exercicios_com_carga(S) == ["leg_press"]
+    rec = E.recordes(S)
+    assert rec[0]["carga"] == 100 and rec[0]["data"] == R.add_dias(hoje, -10) and not rec[0]["novo"]
+    S["metasCarga"] = {"leg_press": 120, "supino_maquina": 50, "nao_existe": 10}
+    mt = {m["id"]: m for m in E.metas_de_carga(S)}
+    assert set(mt) == {"leg_press", "supino_maquina"}
+    assert mt["leg_press"]["progresso"] == pytest.approx(100 / 120) and not mt["leg_press"]["atingida"]
+    assert mt["supino_maquina"]["melhor"] is None and mt["supino_maquina"]["progresso"] == 0
+    S["metasCarga"]["leg_press"] = 100
+    assert {m["id"]: m for m in E.metas_de_carga(S)}["leg_press"]["atingida"]
+
+
+def test_comparar_semanas(S):
+    ws = R.inicio_semana(R.hoje())
+    S["sessions"] = [sessao(R.add_dias(ws, -5), [("supino_maquina", 40, "nenhum")], n=1),
+                     sessao(R.add_dias(ws, -3), [("supino_maquina", 40, "nenhum")], n=2),
+                     sessao(ws, [("supino_maquina", 50, "nenhum")], n=3)]
+    c = E.comparar_semanas(S)
+    assert c["anterior"] == {"treinos": 2, "series": 6, "volume": 2 * 3 * 40 * 15, "cardio": 0}
+    assert c["atual"]["treinos"] == 1 and c["atual"]["volume"] == 3 * 50 * 15

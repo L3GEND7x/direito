@@ -145,3 +145,56 @@ def comparacao_medidas(S: dict) -> list[dict]:
             out.append({"chave": k, "rotulo": rotulo, "primeira": sm[0][1], "data_primeira": sm[0][0],
                         "ultima": sm[-1][1], "data_ultima": sm[-1][0], "variacao": sm[-1][1] - sm[0][1], "registros": len(sm)})
     return out
+
+
+# ---------------------------------------------------------------- por exercício, recordes, metas e semanas
+def cargas_do_exercicio(S: dict, ex_id: str) -> list[tuple[str, float]]:
+    """(data, maior carga da sessão) de cada sessão com carga registrada nesse exercício."""
+    return [(x["date"], x["max"]) for x in R.historico_ex(S, ex_id) if x["max"] is not None]
+
+
+def exercicios_com_carga(S: dict) -> list[str]:
+    """Exercícios com pelo menos uma carga registrada, do mais treinado ao menos."""
+    n = {x: len(cargas_do_exercicio(S, x)) for x in D.EXERCICIOS if not D.EXERCICIOS[x].get("semCarga")}
+    return sorted((x for x, k in n.items() if k), key=lambda x: (-n[x], R.nome_ex(x)))
+
+
+def recordes(S: dict, n: int = 10) -> list[dict]:
+    """Maior carga já registrada em cada exercício (a primeira vez que ela apareceu), mais recentes primeiro."""
+    out = []
+    for ex_id in exercicios_com_carga(S):
+        h = cargas_do_exercicio(S, ex_id)
+        topo = max(v for _, v in h)
+        data = next(d for d, v in h if v == topo)
+        out.append({"id": ex_id, "nome": R.nome_ex(ex_id), "carga": topo, "data": data, "registros": len(h),
+                    "novo": R.dias_entre(data, R.hoje()) <= 7 and len(h) > 1 and h[0][1] < topo})
+    return sorted(out, key=lambda x: x["data"], reverse=True)[:n]
+
+
+def metas_de_carga(S: dict) -> list[dict]:
+    """Progresso de cada meta de carga: última carga registrada ÷ meta."""
+    out = []
+    for ex_id, alvo in (S.get("metasCarga") or {}).items():
+        if ex_id not in D.EXERCICIOS or not R.ok(R.num(alvo)) or float(alvo) <= 0:
+            continue
+        h = cargas_do_exercicio(S, ex_id)
+        atual = h[-1][1] if h else None
+        melhor = max((v for _, v in h), default=None)
+        out.append({"id": ex_id, "nome": R.nome_ex(ex_id), "meta": float(alvo), "atual": atual, "melhor": melhor,
+                    "progresso": min(1.0, (melhor or 0) / float(alvo)), "atingida": melhor is not None and melhor >= float(alvo)})
+    return sorted(out, key=lambda x: (x["atingida"], -x["progresso"]))
+
+
+def _resumo_semana(S: dict, ws: str) -> dict:
+    dias = R.dias_da_semana(ws)
+    ses = [s for s in S["sessions"] if s["date"] in dias and s.get("status") == "concluida"]
+    series = sum(1 for s in ses for e in s.get("ex", []) if D.EXERCICIOS.get(e["id"], {}).get("tipo") == "carga"
+                 for x in e.get("sets", []) if x.get("done"))
+    return {"treinos": len({s["date"] for s in ses}), "series": series, "volume": round(sum(R.volume(s) for s in ses)),
+            "cardio": round(R.energia_semana(S, ws)["cardioMin"])}
+
+
+def comparar_semanas(S: dict) -> dict:
+    """Semana atual (até hoje) e a anterior inteira: treinos, séries, volume (kg) e minutos de cardio."""
+    ws = R.inicio_semana(R.hoje())
+    return {"atual": _resumo_semana(S, ws), "anterior": _resumo_semana(S, R.add_dias(ws, -7))}
