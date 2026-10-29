@@ -365,3 +365,29 @@ def test_perfil_tem_botao_de_compartilhar_so_com_o_link(monkeypatch):
     import ui
     h = ui.botao_compartilhar("https://foco-leve.test", "convite </script><b>")
     assert "navigator.share" in h and "clipboard" in h and "</script><b>" not in h
+
+
+def test_objetivos_em_cartoes_biblioteca_e_acompanhamento():
+    at = criar_conta(abrir(), "obj@exemplo.com")
+    # primeiro acesso: objetivo combinado, sem máquinas, glúteos como prioridade
+    at.button_group(key="pri_obj").set_value(["emagrecimento", "gluteos"])
+    at.button_group(key="pri_eq").set_value(["halteres", "corpo"])
+    primeiro_acesso(at)
+    p = at.session_state["S"]["profile"]
+    assert p["objetivos"] == ["emagrecimento", "gluteos"] and p["equipamentos"] == ["halteres", "corpo"]
+    # nenhum objetivo: o formulário do Perfil recusa
+    at.radio(key="aba").set_value("Perfil").run()
+    at.button_group(key="perf_obj").set_value([])
+    botao(at, "Salvar perfil").click().run()
+    assert any("pelo menos um objetivo" in e.value for e in at.error)
+    # Treinos: o plano só usa o que a pessoa tem, e a biblioteca mostra o motivo do que ficou de fora
+    at.radio(key="aba").set_value("Treinos").run()
+    assert not at.exception
+    tudo = textos(at.main)
+    assert "Objetivo: Emagrecimento + Glúteos" in tudo and "Biblioteca de exercícios" in tudo
+    at.selectbox(key="bib_grupo").set_value("Peitoral").run()
+    assert "Supino na máquina · fora do seu plano" in [e.label for e in at.expander]
+    assert "Flexão de braços inclinada (mãos no banco)" in [e.label for e in at.expander]
+    # Evolução: acompanhamento sem dados não inventa números
+    at.radio(key="aba").set_value("Evolução").run()
+    assert not at.exception and "Ainda não há treinos concluídos" in textos(at.main)
