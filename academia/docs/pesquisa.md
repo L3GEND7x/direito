@@ -6,7 +6,7 @@ Sem chatbot, sem IA e sem APIs externas novas: tudo é calculado no próprio app
 **Como foi verificada.** Os sites dos periódicos (doi.org, PubMed, PMC, BMJ, Frontiers, ACSM, OMS) estão bloqueados
 na rede deste ambiente de desenvolvimento. Os dados de cada estudo (título, autores, ano, periódico, DOI, conclusões)
 foram conferidos por busca na web, em mais de uma fonte quando possível. Os links ficam no app como texto de
-referência, mas **não foram abertos daqui**: confira-os uma vez num navegador comum antes de divulgar o app.
+referência. Como não abriam deste ambiente, foram **conferidos manualmente num navegador em 29/10/2026**.
 Onde um dado não foi confirmado, ele foi omitido (por exemplo, volume e páginas de Kikuchi & Nakazato).
 
 ---
@@ -131,7 +131,7 @@ Verificação visual em 375 e 1440 px: sem rolagem horizontal, sem erros de Java
 
 ## 6. Limitações e o que depende de configuração
 
-- **Links das referências:** não abertos deste ambiente (rede bloqueada); confira num navegador.
+- **Links das referências:** conferidos manualmente num navegador em 29/10/2026 (a rede deste ambiente bloqueava os periódicos).
 - **Supabase:** os campos novos ficam no mesmo JSON por usuário (`dados`), já coberto pelo RLS. **Não é preciso rodar SQL novo.**
 - **Sem vídeos:** nenhuma fonte de vídeo foi validada; só fotos do Free Exercise DB conferidas.
 - **Grupo muscular por exercício** conta só o grupo principal nas séries semanais (os secundários aparecem na biblioteca).
