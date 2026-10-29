@@ -83,6 +83,12 @@ O plano não substitui avaliação médica nem a orientação do profissional de
 - **Lembrete de cópia de segurança** no Início quando há treinos novos e a última cópia tem mais de 30 dias.
   (Cópia por e-mail exigiria um serviço de envio configurado; não foi feita.)
 
+- **Peso da semana** no Início: um campo para atualizar o peso e barras com a variação de cada semana — verde quando
+  andou na direção da meta de peso (evolução), vermelho quando se afastou (regressão).
+- **Recompensas:** pontos (+10 por treino, +100 por semana com todos os treinos planejados, +20 pela pesagem da
+  semana, +30 por recorde de carga, +2 por check-in), níveis a cada 500 pontos e um **álbum de figurinhas** em
+  Evolução → Conquistas. Tudo é calculado dos registros: excluir um treino tira os pontos dele.
+
 A pesquisa por trás dessas regras (projetos de código aberto, licenças, estudos, limitações) está em
 [`docs/pesquisa.md`](docs/pesquisa.md).
 

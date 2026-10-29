@@ -198,3 +198,38 @@ def comparar_semanas(S: dict) -> dict:
     """Semana atual (até hoje) e a anterior inteira: treinos, séries, volume (kg) e minutos de cardio."""
     ws = R.inicio_semana(R.hoje())
     return {"atual": _resumo_semana(S, ws), "anterior": _resumo_semana(S, R.add_dias(ws, -7))}
+
+
+# ---------------------------------------------------------------- peso semanal
+PESAGEM_SEMANAL = "Pesagem semanal"
+
+
+def pesos_semanais(S: dict) -> list[dict]:
+    """Média de peso de cada semana com pesagem e a variação em relação à semana com pesagem anterior.
+
+    "Evolução" = andou na direção da meta de peso; "regressão" = se afastou dela; variação menor que 0,1 kg = estável."""
+    meta = float(S["profile"]["pesoMeta"])
+    g: dict[str, list[float]] = {}
+    for w in R.pesos_ordenados(S):
+        g.setdefault(R.inicio_semana(w["date"]), []).append(float(w["peso"]))
+    out, anterior = [], None
+    for ws in sorted(g):
+        media = sum(g[ws]) / len(g[ws])
+        item = {"ws": ws, "rotulo": R.fmt_d(ws), "media": media, "variacao": None, "direcao": "inicio"}
+        if anterior is not None:
+            v = media - anterior
+            item["variacao"] = v
+            if abs(v) < 0.1:
+                item["direcao"] = "estavel"
+            else:
+                item["direcao"] = "evolucao" if abs(media - meta) < abs(anterior - meta) else "regressao"
+        out.append(item)
+        anterior = media
+    return out
+
+
+def pesagem_desta_semana(S: dict) -> dict | None:
+    ws = R.inicio_semana(R.hoje())
+    ds = R.dias_da_semana(ws)
+    w = [x for x in R.pesos_ordenados(S) if x["date"] in ds]
+    return w[-1] if w else None

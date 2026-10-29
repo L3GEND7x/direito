@@ -448,3 +448,21 @@ def test_ficha_no_treino_meta_de_carga_e_lembrete_de_copia():
     # Início: lembrete de cópia de segurança (há treino e nenhuma cópia baixada)
     at.radio(key="aba").set_value("Início").run()
     assert "ainda não baixou uma cópia de segurança" in textos(at.main)
+
+
+def test_peso_semanal_pontos_e_album():
+    at = criar_conta(abrir(), "pontos@exemplo.com")
+    primeiro_acesso(at, peso="100")
+    # Início: peso da semana
+    [x for x in at.text_input if x.label == "Peso desta semana (kg)"][0].input("99,4")
+    botao(at, "Atualizar").click().run()
+    assert not at.exception
+    S = at.session_state["S"]
+    hoje = [w for w in S["weights"] if w["date"] == R.hoje()]
+    assert len(hoje) == 1 and hoje[0]["peso"] == 99.4  # substitui a pesagem do primeiro acesso do mesmo dia
+    tudo = textos(at.main)
+    assert "pontos" in tudo and "Nível 1" in tudo
+    # Evolução → Conquistas: álbum com figurinhas bloqueadas e a tabela de pontos
+    at.radio(key="aba").set_value("Evolução").run()
+    tudo = textos(at.main)
+    assert not at.exception and "Álbum de figurinhas" in tudo and "Primeiro passo" in tudo and "De onde vêm os pontos" in tudo
