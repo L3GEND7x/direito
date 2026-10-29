@@ -26,7 +26,8 @@ import streamlit.components.v1 as components
 # nova, mas os módulos do app importados antes continuam na versão antiga (e falta o que foi acrescentado neles).
 # Antes de importá-los, recarrega os que mudaram no disco — na ordem das dependências.
 MODULOS_DO_APP = ("foco_leve.dados", "foco_leve.biblioteca", "foco_leve.regras", "foco_leve.objetivos", "foco_leve.plano",
-                  "foco_leve.monitoramento", "foco_leve.evolucao", "foco_leve.relatorio_pdf",
+                  "foco_leve.monitoramento", "foco_leve.evolucao", "foco_leve.recompensas",
+                  "foco_leve.relatorio_pdf",
                   "foco_leve.armazenamento", "ui")
 _cascata = False  # depois de recarregar um módulo, recarrega também os seguintes (podem depender dele)
 for _nome in MODULOS_DO_APP:
@@ -50,6 +51,7 @@ from foco_leve import evolucao as E
 from foco_leve import monitoramento as M
 from foco_leve import objetivos as O
 from foco_leve import plano as P
+from foco_leve import recompensas as RC
 from foco_leve import regras as R
 from foco_leve import relatorio_pdf as RP
 from foco_leve.regras import br, brx, fmt_d, fmt_dy, num, ok
@@ -916,6 +918,7 @@ def tela_inicio() -> None:
     observacoes("inicio")
     sugestoes()
     lembrete_copia()
+    recompensas_inicio()
 
     # progresso: semana do plano, consistência e cardio
     ws = R.inicio_semana(t)
@@ -940,11 +943,7 @@ def tela_inicio() -> None:
         c1.metric("Peso atual" if S["weights"] else "Peso inicial", f"{br(cw)} kg")
         c2.metric("Meta", f"{br(meta)} kg")
         c3.metric("Faltam", f"{br(max(0, cw - meta))} kg")
-        if len(S["weights"]) >= 2:
-            grafico_peso("diario", 150)
-        else:
-            html_md(ui.vazio("Gráfico de peso", "Registre pelo menos duas pesagens (em Evolução ou em “Editar meus dados”) "
-                                                "para ver a curva aqui."))
+        peso_semanal()
         i = R.imc(S, cw)
         st.caption(f"IMC {br(i)} kg/m² ({R.imc_categoria(i)}): indicador de triagem, não é diagnóstico.")
 
@@ -965,6 +964,92 @@ def tela_inicio() -> None:
     rv = R.recuperacao(S)
     st.caption(f"Recuperação: {rv['txt']} — {rv['detalhe']}")
     editar_dados()
+
+
+def peso_semanal() -> None:
+    """Pesagem da semana em um campo e as variações semana a semana (evolução = na direção da meta)."""
+    ja = E.pesagem_desta_semana(S)
+    with st.form("peso_semana", clear_on_submit=True):
+        c1, c2 = st.columns([3, 2], vertical_alignment="bottom")
+        txt = c1.text_input("Peso desta semana (kg)", placeholder=f"Ex.: {brx(R.peso_atual(S))}",
+                            help="Pese-se de preferência no mesmo dia da semana, em jejum, depois de ir ao banheiro.")
+        if c2.form_submit_button("Atualizar", type="primary", use_container_width=True):
+            v = num(txt)
+            if not ok(v) or not 30 <= v <= 300:
+                st.error("Informe o peso entre 30 e 300 kg.")
+            else:
+                S["weights"] = [x for x in S["weights"] if x["date"] != t]
+                S["weights"].append({"id": R.novo_id(), "date": t, "peso": round(v, 1), "cintura": None,
+                                     "cond": E.PESAGEM_SEMANAL, "obs": ""})
+                salvar()
+                st.session_state.aviso = ("ok", "Peso da semana atualizado", f"{br(v)} kg em {fmt_d(t)}.")
+                st.rerun()
+    if ja:
+        st.caption(f"Nesta semana: {br(ja['peso'])} kg em {fmt_d(ja['date'])}. Registrar de novo hoje substitui o de hoje.")
+    sem = E.pesos_semanais(S)[-12:]
+    if len(sem) < 2:
+        html_md(ui.vazio("Evolução semanal", "Registre o peso em duas semanas diferentes para ver se você está evoluindo "
+                                             "na direção da sua meta."))
+        return
+    cores = {"evolucao": "#30d158", "regressao": "#f0364a", "estavel": "#8e8e93", "inicio": "#5a5a60"}
+    nomes = {"evolucao": "Evolução", "regressao": "Regressão", "estavel": "Estável", "inicio": "Início"}
+    df = pd.DataFrame([{"Semana": x["rotulo"], "Variação (kg)": round(x["variacao"] or 0, 1), "Média (kg)": round(x["media"], 1),
+                        "Resultado": nomes[x["direcao"]]} for x in sem])
+    grafico(df, {"height": 170, "mark": {"type": "bar", "cornerRadiusEnd": 4, "width": {"band": 0.6}},
+                 "encoding": {"x": {"field": "Semana", "type": "nominal", "sort": list(df["Semana"]), "title": None,
+                                    "axis": {"labelAngle": 0, "labelOverlap": True}},
+                              "y": {"field": "Variação (kg)", "type": "quantitative", "title": None},
+                              "color": {"field": "Resultado", "type": "nominal", "legend": None,
+                                        "scale": {"domain": list(nomes.values()), "range": [cores[k] for k in nomes]}},
+                              "tooltip": [{"field": "Semana"}, {"field": "Média (kg)", "type": "quantitative"},
+                                          {"field": "Variação (kg)", "type": "quantitative"}, {"field": "Resultado"}]}})
+    u = sem[-1]
+    if u["variacao"] is not None:
+        frase = {"evolucao": "evolução: na direção da sua meta", "regressao": "regressão: longe da sua meta nesta semana",
+                 "estavel": "estável", "inicio": ""}[u["direcao"]]
+        st.caption(f"Última semana: média {br(u['media'])} kg ({'+' if u['variacao'] > 0 else ''}{br(u['variacao'])} kg), {frase}. "
+                   "Verde = na direção da meta, vermelho = se afastou. Uma semana ruim não apaga a tendência.")
+
+
+def recompensas_inicio() -> None:
+    """Pontos e nível no Início; comemora figurinhas novas uma vez."""
+    pt = RC.pontos(S)
+    novas = RC.novas(S)
+    with st.container(border=True):
+        c1, c2 = st.columns([3, 2])
+        c1.markdown(f"<p class='fl-rotulo'>Nível {pt['nivel']} · {html.escape(pt['nome_nivel'])}</p>"
+                    f"<div class='fl-pontos'>{br(pt['total'], 0)} <span>pontos</span></div>", unsafe_allow_html=True)
+        ganhas = [f for f in RC.figurinhas(S) if f["ganha"]]
+        c2.markdown("<div class='fl-mini-fig'>" + "".join(f"<span title='{html.escape(f['nome'])}'>{f['emoji']}</span>"
+                                                          for f in ganhas[-4:]) + "</div>", unsafe_allow_html=True)
+        st.progress(pt["no_nivel"] / RC.PONTOS_POR_NIVEL, text=f"Faltam {br(pt['falta'], 0)} pontos para o próximo nível")
+        st.caption(f"+{RC.PONTOS['treino']} por treino · +{RC.PONTOS['semana_completa']} por semana com todos os treinos · "
+                   f"+{RC.PONTOS['pesagem_semanal']} pela pesagem da semana · +{RC.PONTOS['recorde']} por recorde. "
+                   "Álbum em Evolução → Conquistas.")
+    if novas:
+        st.balloons()
+        for f in novas[:3]:
+            st.toast(f"Figurinha nova: {f['emoji']} {f['nome']}")
+        if len(novas) > 3:
+            st.toast(f"E mais {len(novas) - 3} figurinha(s) no álbum!")
+        RC.marcar_vistas(S)
+        salvar()
+
+
+def evolucao_conquistas() -> None:
+    pt = RC.pontos(S)
+    html_md(ui.grade([("Pontos", br(pt["total"], 0), f"nível {pt['nivel']} · {pt['nome_nivel']}", True),
+                      ("Próximo nível", f"{br(pt['falta'], 0)} pts", f"a cada {RC.PONTOS_POR_NIVEL} pontos", False)]))
+    figs = RC.figurinhas(S)
+    html_md(f"<div class='fl-secao'>Álbum de figurinhas · {sum(f['ganha'] for f in figs)} de {len(figs)}</div>")
+    html_md("<div class='fl-album'>" + "".join(
+        f"<div class='fl-fig{'' if f['ganha'] else ' bloqueada'}'><div class='fl-fig-emoji' aria-hidden='true'>{f['emoji']}</div>"
+        f"<b>{html.escape(f['nome'])}</b><span>{html.escape(f['como'])}</span>"
+        f"<i>{'Ganha' if f['ganha'] else 'Bloqueada'}</i></div>" for f in figs) + "</div>")
+    html_md("<div class='fl-secao'>De onde vêm os pontos</div>")
+    st.dataframe(pd.DataFrame([{"Conquista": x["motivo"], "Quantidade": x["qtd"], "Pontos cada": x["pts"], "Total": x["subtotal"]}
+                               for x in pt["itens"]]), hide_index=True, use_container_width=True)
+    st.caption("Os pontos são calculados a partir dos seus registros: excluir um treino tira os pontos dele.")
 
 
 def historico_cargas() -> None:
@@ -1639,13 +1724,15 @@ def grafico_barras(linhas: list[dict], y: str, titulo_y: str, ref: float | None 
 
 def tela_evolucao() -> None:
     cabecalho("Evolução", "Seus registros, sem estimativas inventadas")
-    aba_plano, aba_peso, aba_treinos, aba_rel = st.tabs(["Plano", "Peso", "Treinos", "Relatório"])
+    aba_plano, aba_peso, aba_treinos, aba_conq, aba_rel = st.tabs(["Plano", "Peso", "Treinos", "Conquistas", "Relatório"])
     with aba_plano:
         evolucao_plano()
     with aba_peso:
         evolucao_peso()
     with aba_treinos:
         evolucao_treinos()
+    with aba_conq:
+        evolucao_conquistas()
     with aba_rel:
         evolucao_relatorio()
 
@@ -1798,9 +1885,8 @@ def evolucao_exercicio() -> None:
                                                        "axis": {"labelExpr": "''", "ticks": False}}}, "layer": camadas})
         st.caption(f"{len(h)} registro(s): de {brx(h[0][1])} kg ({fmt_d(h[0][0])}) a {brx(h[-1][1])} kg ({fmt_d(h[-1][0])}), "
                    f"melhor {brx(max(v for _, v in h))} kg." + (" Linha tracejada: sua meta." if x in metas else ""))
-        c1, c2 = st.columns([3, 2])
+        c1, c2 = st.columns([3, 2], vertical_alignment="bottom")
         alvo = c1.text_input("Meta de carga (kg)", brx(metas[x]) if x in metas else "", key=f"meta_{x}", placeholder="Ex.: 50")
-        c2.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
         if c2.button("Salvar meta", key=f"meta_ok_{x}", use_container_width=True):
             v = num(alvo)
             if alvo.strip() and (not ok(v) or not 0 < v <= 500):
