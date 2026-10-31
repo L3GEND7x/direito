@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block titulo %}Usuários{% endblock %}
+{% block conteudo %}
+<h1>Usuários</h1>
+<p class="mudo">Cada pessoa tem login próprio. Desativar um usuário encerra imediatamente as sessões dele.</p>
+{% if erro %}<div class="aviso erro" role="alert">{{ erro }}</div>{% endif %}
+{% if senha_temp %}<div class="aviso alerta"><strong>Senha temporária de {{ senha_temp[0] }}:</strong> <code>{{ senha_temp[1] }}</code><br>
+<small>Exibida uma única vez. Entregue por canal seguro; a troca é obrigatória no primeiro acesso, junto com a ativação do MFA.</small></div>{% endif %}
+
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>Nome</th><th>Perfil</th><th>MFA</th><th>Situação</th><th>Ações</th></tr></thead>
+  <tbody>{% for u in usuarios %}<tr>
+    <td>{{ u.nome }}<br><small>{{ u.email }}{% if u.oab %} · OAB {{ u.oab }}{% endif %}</small></td>
+    <td>{% if u.id != usuario.id %}<form method="post" action="/admin/usuarios/{{ u.id }}/perfil" class="acoes"><input type="hidden" name="csrf" value="{{ csrf }}">
+        <select name="perfil" aria-label="Perfil de {{ u.nome }}">{% for p in Perfil %}<option value="{{ p.value }}" {{ 'selected' if u.perfil == p }}>{{ PERFIL_ROTULO[p] }}</option>{% endfor %}</select>
+        <button class="secundario" type="submit">Salvar</button></form>{% else %}{{ u.perfil_rotulo }}{% endif %}</td>
+    <td><span class="selo {{ 'ok' if u.mfa_ativo else 'alerta' }}">{{ 'Ativo' if u.mfa_ativo else 'Pendente' }}</span></td>
+    <td><span class="selo {{ 'ativo' if u.ativo else 'inativo' }}">{{ 'Ativo' if u.ativo else 'Desativado' }}</span></td>
+    <td><div class="acoes">
+      {% if u.id != usuario.id %}
+        {% if u.ativo %}<form method="post" action="/admin/usuarios/{{ u.id }}/desativar"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secundario" type="submit">Desativar</button></form>
+        {% else %}<form method="post" action="/admin/usuarios/{{ u.id }}/reativar"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secundario" type="submit">Reativar</button></form>{% endif %}
+      {% endif %}
+      <form method="post" action="/admin/usuarios/{{ u.id }}/redefinir-senha"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secundario" type="submit">Nova senha</button></form>
+      <form method="post" action="/admin/usuarios/{{ u.id }}/redefinir-mfa"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secundario" type="submit">Redefinir MFA</button></form>
+    </div></td></tr>{% endfor %}</tbody>
+</table></div>
+
+<h2>Novo usuário</h2>
+<div class="estreito cartao">
+<form class="formulario" method="post" action="/admin/usuarios">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="campos-2">
+    <div class="campo"><label for="nome">Nome completo</label><input id="nome" name="nome" type="text" value="{{ v.nome or '' }}" required></div>
+    <div class="campo"><label for="email">E-mail</label><input id="email" name="email" type="email" value="{{ v.email or '' }}" required></div>
+  </div>
+  <div class="campos-2">
+    <div class="campo"><label for="perfil">Perfil</label><select id="perfil" name="perfil" required>{% for p in Perfil %}<option value="{{ p.value }}" {{ 'selected' if v.perfil == p.value }}>{{ PERFIL_ROTULO[p] }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="oab">OAB <span class="dica">— obrigatória para advogado</span></label><input id="oab" name="oab" type="text" value="{{ v.oab or '' }}" placeholder="UF 000000"></div>
+  </div>
+  <div><button type="submit">Criar usuário</button></div>
+</form>
+</div>
+<div class="cartao"><h3 class="mt-0">Perfis</h3><dl class="ficha">
+  <dt>Administrador</dt><dd>Usuários, configurações e auditoria. Não realiza consultas.</dd>
+  <dt>Advogado</dt><dd>Consultas, processos, relatórios e aprovação das consultas de assistentes.</dd>
+  <dt>Assistente jurídico</dt><dd>Solicita consultas (com aprovação), cadastra clientes e acompanha diligências.</dd>
+  <dt>Auditor</dt><dd>Histórico e trilha de auditoria, sem ver o conteúdo das consultas e sem alterar nada.</dd>
+</dl></div>
+{% endblock %}

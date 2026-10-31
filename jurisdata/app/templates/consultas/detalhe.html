@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block titulo %}Consulta #{{ c.id }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div><h1>Consulta #{{ c.id }}</h1><p class="mudo">{{ TIPOS.get(c.tipo, c.tipo) }} · <span class="selo {{ c.status.value }}">{{ c.status_rotulo }}</span></p></div>
+  {% if resultado %}<div class="acoes">
+    <a class="botao" href="/consultas/{{ c.id }}/relatorio.pdf">Relatório PDF</a>
+    {% if usuario.perfil == Perfil.ADVOGADO %}<a class="botao secundario" href="/consultas/{{ c.id }}/relatorio.pdf?integral=1">PDF integral (sem máscara)</a>{% endif %}
+  </div>{% endif %}
+</div>
+
+{% if c.status.value == 'falha' %}
+  <div class="aviso erro" role="alert"><strong>A consulta não foi concluída.</strong> {{ c.erro }}<br><small>Nenhum dado anterior é exibido no lugar do resultado. Corrija os dados ou tente mais tarde com uma nova consulta.</small></div>
+{% endif %}
+
+<div class="cartao"><dl class="ficha">
+  <dt>Documento</dt><dd>{{ c.documento_mascarado }}</dd>
+  <dt>Processo / demanda</dt><dd>{% if usuario.perfil != Perfil.AUDITOR %}<a href="/processos/{{ c.processo_id }}">{{ c.processo.rotulo }}</a>{% else %}{{ c.processo.rotulo }}{% endif %}</dd>
+  <dt>Finalidade</dt><dd>{{ c.finalidade }}</dd>
+  <dt>Base legal</dt><dd>{{ BASES.get(c.base_legal, c.base_legal) }}</dd>
+  <dt>Fonte</dt><dd>{{ resultado.fonte_rotulo if resultado else c.fonte }}</dd>
+  <dt>Solicitada por</dt><dd>{{ c.solicitante.nome }} · {{ c.solicitada_em|dh }}</dd>
+  <dt>Aprovação</dt><dd>{% if c.aprovador %}{{ c.aprovador.nome }}{% elif c.status.value == 'pendente_aprovacao' %}Aguardando{% else %}Dispensada (solicitante advogado){% endif %}</dd>
+  {% if c.motivo_recusa %}<dt>Motivo da recusa</dt><dd>{{ c.motivo_recusa }}</dd>{% endif %}
+  <dt>Executada em</dt><dd>{{ c.executada_em|dh }}</dd>
+  <dt>Expurgo previsto</dt><dd>{{ c.expurgar_em|dh }}</dd>
+</dl></div>
+
+{% if pode_aprovar %}
+<h2>Aprovação</h2>
+<div class="cartao">
+  <p>Confira se a finalidade e a base legal são adequadas antes de aprovar. A aprovação executa a consulta na fonte (pode haver cobrança por consulta).</p>
+  <div class="acoes">
+    <form method="post" action="/consultas/{{ c.id }}/aprovar"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Aprovar e executar</button></form>
+  </div>
+  <form class="mt formulario" method="post" action="/consultas/{{ c.id }}/recusar">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <div class="campo"><label for="motivo">Motivo da recusa</label><textarea id="motivo" name="motivo" required minlength="10"></textarea></div>
+    <div><button class="secundario" type="submit">Recusar</button></div>
+  </form>
+</div>
+{% endif %}
+
+{% if resultado %}
+  <h2>Dados retornados</h2>
+  {% if resultado.ambiente == 'simulado' %}<div class="aviso ficticio">{{ resultado.aviso }}</div>
+  {% elif resultado.aviso %}<div class="aviso alerta">{{ resultado.aviso }}</div>{% endif %}
+  <p class="mudo">Resposta da fonte em {{ resultado.consultado_em[:19]|replace('T', ' ') }} (UTC). CPFs exibidos com máscara.</p>
+  <div class="tabela-rolagem"><table><tbody>
+    {% for chave, valor in linhas %}<tr><td class="chave">{{ chave }}</td><td>{{ valor }}</td></tr>{% else %}<tr><td>Sem dados.</td></tr>{% endfor %}
+  </tbody></table></div>
+{% elif c.status.value == 'concluida' and usuario.perfil == Perfil.AUDITOR %}
+  <p class="mudo">O perfil auditor não visualiza o conteúdo retornado.</p>
+{% endif %}
+{% endblock %}

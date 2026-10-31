@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block titulo %}Painel{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div><h1>Olá, {{ usuario.nome.split(' ')[0] }}</h1><p class="mudo">{{ usuario.perfil_rotulo }}</p></div>
+  {% if usuario.perfil in (Perfil.ADVOGADO, Perfil.ASSISTENTE) %}<a class="botao" href="/consultas/nova">Nova consulta</a>{% endif %}
+</div>
+
+{% if usuario.perfil in (Perfil.ADVOGADO, Perfil.ASSISTENTE) %}
+<div class="grade">
+  <div class="indicador"><div class="valor">{{ consultas_24h }}<small class="menor"> / {{ limite }}</small></div><div class="rotulo">Suas consultas nas últimas 24 h</div></div>
+  <div class="indicador"><div class="valor">{{ pendentes }}</div><div class="rotulo">{{ 'Consultas aguardando sua aprovação' if usuario.perfil == Perfil.ADVOGADO else 'Suas consultas aguardando aprovação' }}</div></div>
+  <div class="indicador"><div class="valor">{{ processos_ativos }}</div><div class="rotulo">Processos e demandas ativos</div></div>
+  <div class="indicador"><div class="valor">{{ prazos|length }}</div><div class="rotulo">Diligências com prazo em até 7 dias</div></div>
+</div>
+
+{% if prazos %}
+<h2>Prazos de diligências</h2>
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>Prazo</th><th>Processo</th><th>Pesquisado</th><th></th></tr></thead>
+  <tbody>{% for d in prazos %}<tr><td>{{ d.prazo|data }}</td><td>{{ d.processo.rotulo }}</td><td>{{ d.pesquisado_nome }}</td><td><a href="/diligencias/{{ d.id }}">Abrir</a></td></tr>{% endfor %}</tbody>
+</table></div>
+{% endif %}
+
+<h2>Consultas recentes</h2>
+{% if recentes %}
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>Nº</th><th>Documento</th><th>Processo</th><th>Situação</th><th>Solicitada</th></tr></thead>
+  <tbody>{% for c in recentes %}<tr>
+    <td><a href="/consultas/{{ c.id }}">#{{ c.id }}</a></td><td>{{ c.documento_mascarado }}</td><td>{{ c.processo.rotulo }}</td>
+    <td><span class="selo {{ c.status.value }}">{{ c.status_rotulo }}</span></td><td>{{ c.solicitada_em|dh }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="mudo">Nenhuma consulta ainda.</p>{% endif %}
+{% endif %}
+
+{% if usuario.perfil in (Perfil.ADMIN, Perfil.AUDITOR) %}
+<div class="grade">
+  <div class="indicador"><div class="valor">{% if cadeia.integra %}<span class="selo ok">Íntegra</span>{% else %}<span class="selo erro">Rompida</span>{% endif %}</div>
+    <div class="rotulo">Trilha de auditoria · {{ cadeia.total }} registros{% if not cadeia.integra %} · problema no registro {{ cadeia.falha_id }}{% endif %}</div></div>
+  <div class="indicador"><div class="valor">{{ usuarios_ativos }}</div><div class="rotulo">Usuários ativos</div></div>
+</div>
+<p class="mt"><a class="botao secundario" href="/auditoria">Abrir auditoria</a>{% if usuario.perfil == Perfil.ADMIN %} <a class="botao secundario" href="/admin/usuarios">Gerenciar usuários</a>{% endif %}</p>
+{% endif %}
+{% endblock %}

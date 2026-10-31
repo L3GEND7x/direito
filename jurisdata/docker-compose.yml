@@ -1,0 +1,32 @@
+# Uso: cp .env.example .env  (preencha)  →  docker compose up -d --build
+# O banco não é exposto para fora da rede interna. Publique a aplicação SOMENTE atrás de um
+# proxy reverso com HTTPS (Caddy, Nginx, Traefik ou o balanceador da nuvem).
+services:
+  banco:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: jurisdata
+      POSTGRES_USER: jurisdata
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD no .env}
+    volumes:
+      - dados_banco:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jurisdata -d jurisdata"]
+      interval: 10s
+      retries: 5
+
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      JURISDATA_DATABASE_URL: postgresql+psycopg://jurisdata:${POSTGRES_PASSWORD}@banco:5432/jurisdata
+    depends_on:
+      banco:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8000:8000"
+
+volumes:
+  dados_banco:

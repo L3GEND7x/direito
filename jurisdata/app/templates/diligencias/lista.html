@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block titulo %}Diligências patrimoniais{% endblock %}
+{% block conteudo %}
+<div class="cabecalho"><div><h1>Diligências patrimoniais</h1>
+<p class="mudo">Acompanhamento dos pedidos de pesquisa feitos ao juízo. O {{ nome_sistema }} não acessa SISBAJUD, RENAJUD, SNIPER ou INFOJUD: esses sistemas são operados pelo Judiciário.</p></div>
+<a class="botao" href="/diligencias/nova">Registrar diligência</a></div>
+{% if diligencias %}
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>Processo</th><th>Sistema</th><th>Pesquisado</th><th>Situação</th><th>Prazo</th><th>Atualização</th></tr></thead>
+  <tbody>{% for d in diligencias %}<tr>
+    <td><a href="/diligencias/{{ d.id }}">{{ d.processo.rotulo }}</a></td><td>{{ SISTEMAS.get(d.sistema, d.sistema) }}</td>
+    <td>{{ d.pesquisado_nome }}{% if d.pesquisado_doc_mascarado %}<br><small>{{ d.pesquisado_doc_mascarado }}</small>{% endif %}</td>
+    <td>{{ STATUS.get(d.status, d.status) }}</td><td>{{ d.prazo|data }}</td><td>{{ d.atualizado_em|dh }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<div class="cartao"><p class="mudo">Nenhuma diligência registrada.</p></div>{% endif %}
+{% endblock %}

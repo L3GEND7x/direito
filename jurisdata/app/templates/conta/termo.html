@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block titulo %}Termo de responsabilidade{% endblock %}
+{% block conteudo %}
+<h1>Termo de responsabilidade</h1>
+<p class="mudo">Leitura e aceite obrigatórios antes do primeiro uso.</p>
+{% if erro %}<div class="aviso erro" role="alert">{{ erro }}</div>{% endif %}
+<div class="estreito cartao">
+  <ol>{% for item in termo %}<li class="mb-p">{{ item }}</li>{% endfor %}</ol>
+  <form class="formulario" method="post" action="/conta/termo">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+    <label class="marcacao"><input type="checkbox" name="aceito" value="1"> Li e aceito as regras acima.</label>
+    <div><button type="submit">Aceitar e continuar</button></div>
+  </form>
+</div>
+{% endblock %}

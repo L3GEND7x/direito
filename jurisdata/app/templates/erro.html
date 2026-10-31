@@ -1,0 +1,4 @@
+{% extends "base.html" %}
+{% block titulo %}{{ titulo }}{% endblock %}
+{% block conteudo %}<h1>{{ titulo }}</h1><p class="mudo">{{ texto }}</p><a class="botao secundario" href="/">Voltar ao painel</a>{% endblock %}
+{% block acesso %}<h1 class="titulo-acesso">{{ titulo }}</h1><p class="mudo">{{ texto }}</p><a class="botao secundario" href="/login">Ir para o login</a>{% endblock %}

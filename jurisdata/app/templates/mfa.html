@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block titulo %}Verificação em dois fatores{% endblock %}
+{% block acesso %}
+{% if cadastro %}
+  <h1 class="titulo-acesso">Ative a verificação em dois fatores</h1>
+  <p class="mudo">Obrigatória para todos os usuários. Escaneie o código com um aplicativo autenticador (Google Authenticator, Microsoft Authenticator, Authy ou similar) e digite o código de 6 dígitos.</p>
+  <img class="qr" src="{{ qr }}" alt="QR Code para cadastrar o autenticador">
+  <p class="segredo"><small>Ou digite a chave:</small><br>{{ segredo }}</p>
+{% else %}
+  <h1 class="titulo-acesso">Verificação em dois fatores</h1>
+  <p class="mudo">Digite o código de 6 dígitos do seu aplicativo autenticador.</p>
+{% endif %}
+{% if erro %}<div class="aviso erro" role="alert">{{ erro }}</div>{% endif %}
+<form class="formulario" method="post" action="/login/mfa">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="campo"><label for="codigo">Código</label><input id="codigo" name="codigo" type="text" inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" autocomplete="one-time-code" required autofocus></div>
+  <button type="submit">{{ 'Ativar e entrar' if cadastro else 'Confirmar' }}</button>
+</form>
+<form method="post" action="/logout" class="mt centro"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link" type="submit">Cancelar e sair</button></form>
+{% endblock %}
