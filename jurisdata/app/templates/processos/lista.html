@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block titulo %}Processos e demandas{% endblock %}
+{% block conteudo %}
+<div class="cabecalho"><div><h1>Processos e demandas</h1><p class="mudo">Toda consulta precisa estar vinculada a um item desta lista.</p></div>
+{% if usuario.perfil == Perfil.ADVOGADO %}<a class="botao" href="/processos/novo">Novo processo/demanda</a>{% endif %}</div>
+{% if processos %}
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>Processo / demanda</th><th>Cliente</th><th>Área</th><th>Responsável</th><th>Situação</th></tr></thead>
+  <tbody>{% for p in processos %}<tr>
+    <td><a href="/processos/{{ p.id }}">{{ p.rotulo }}</a>{% if p.orgao %}<br><small>{{ p.orgao }}</small>{% endif %}</td>
+    <td>{{ p.cliente.nome }}</td><td>{{ AREAS.get(p.area, p.area) }}</td><td>{{ p.responsavel.nome }}</td>
+    <td><span class="selo {{ 'ativo' if p.ativo else 'inativo' }}">{{ 'Ativo' if p.ativo else 'Encerrado' }}</span></td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<div class="cartao"><p class="mudo">Nenhum processo cadastrado.{% if usuario.perfil == Perfil.ADVOGADO %} Cadastre primeiro o cliente.{% endif %}</p></div>{% endif %}
+{% endblock %}

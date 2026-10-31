@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titulo %}Consultas{% endblock %}
+{% block conteudo %}
+<div class="cabecalho"><div><h1>{{ 'Consultas (metadados)' if usuario.perfil == Perfil.AUDITOR else 'Histórico de consultas' }}</h1>
+<p class="mudo">{% if usuario.perfil == Perfil.ASSISTENTE %}Somente as consultas que você solicitou.{% elif usuario.perfil == Perfil.AUDITOR %}O perfil auditor vê quem consultou, quando e por quê — não o conteúdo retornado.{% else %}Todas as consultas do escritório.{% endif %}</p></div>
+{% if usuario.perfil != Perfil.AUDITOR %}<a class="botao" href="/consultas/nova">Nova consulta</a>{% endif %}</div>
+<form method="get" action="/consultas" class="mb acoes">
+  <select name="status" aria-label="Filtrar por situação" class="estreito-p"><option value="">Todas as situações</option>
+  {% for s in StatusConsulta %}<option value="{{ s.value }}" {{ 'selected' if status_filtro == s.value }}>{{ s.value|replace('_', ' ')|capitalize }}</option>{% endfor %}</select>
+  <button class="secundario" type="submit">Filtrar</button>
+</form>
+{% if consultas %}
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>Nº</th><th>Tipo</th><th>Documento</th><th>Processo</th><th>Solicitante</th><th>Situação</th><th>Data</th></tr></thead>
+  <tbody>{% for c in consultas %}<tr>
+    <td><a href="/consultas/{{ c.id }}">#{{ c.id }}</a></td><td>{{ TIPOS.get(c.tipo, c.tipo) }}{% if c.ambiente_fonte == 'simulado' %} <span class="selo simulado">fictício</span>{% endif %}</td>
+    <td>{{ c.documento_mascarado }}</td><td>{{ c.processo.rotulo }}</td><td>{{ c.solicitante.nome }}</td>
+    <td><span class="selo {{ c.status.value }}">{{ c.status_rotulo }}</span></td><td>{{ c.solicitada_em|dh }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<div class="cartao"><p class="mudo">Nenhuma consulta encontrada.</p></div>{% endif %}
+{% endblock %}

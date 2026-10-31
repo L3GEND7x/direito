@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block titulo %}Novo cliente{% endblock %}
+{% block conteudo %}
+<h1>Novo cliente</h1>
+{% if erro %}<div class="aviso erro" role="alert">{{ erro }}</div>{% endif %}
+<div class="estreito cartao">
+<form class="formulario" method="post" action="/clientes/novo">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="campo"><label for="nome">Nome / razão social</label><input id="nome" name="nome" type="text" value="{{ v.nome or '' }}" required></div>
+  <div class="campos-2">
+    <div class="campo"><label for="tipo">Tipo</label><select id="tipo" name="tipo" required>
+      <option value="PF" {{ 'selected' if v.tipo == 'PF' }}>Pessoa física</option>
+      <option value="PJ" {{ 'selected' if v.tipo == 'PJ' }}>Pessoa jurídica</option></select></div>
+    <div class="campo"><label for="documento">CPF / CNPJ <span class="dica">— opcional</span></label><input id="documento" name="documento" type="text" autocomplete="off"></div>
+  </div>
+  <div class="campo"><label for="contato">Contato <span class="dica">— opcional; guardado criptografado</span></label><input id="contato" name="contato" type="text" value="{{ v.contato or '' }}" autocomplete="off"></div>
+  <div class="campo"><label for="observacoes">Observações <span class="dica">— evite dados sensíveis desnecessários</span></label><textarea id="observacoes" name="observacoes">{{ v.observacoes or '' }}</textarea></div>
+  <div class="acoes"><button type="submit">Cadastrar</button><a class="botao secundario" href="/clientes">Cancelar</a></div>
+</form>
+</div>
+{% endblock %}

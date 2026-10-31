@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block titulo %}Auditoria{% endblock %}
+{% block conteudo %}
+<div class="cabecalho"><div><h1>Trilha de auditoria</h1>
+<p class="mudo">Registros encadeados por hash: qualquer alteração ou exclusão é detectada.
+{% if cadeia.integra %}<span class="selo ok">Cadeia íntegra · {{ cadeia.total }} registros</span>{% else %}<span class="selo erro">Cadeia rompida no registro {{ cadeia.falha_id }}</span>{% endif %}</p></div>
+<a class="botao secundario" href="/auditoria/exportar.csv?{{ q_str }}">Exportar CSV</a></div>
+{% if erro %}<div class="aviso erro" role="alert">{{ erro }}</div>{% endif %}
+<form method="get" action="/auditoria" class="alinha-base cartao campos-2">
+  <div class="campo"><label for="acao">Ação</label><select id="acao" name="acao"><option value="">Todas</option>{% for k, r in ACOES.items() %}<option value="{{ k }}" {{ 'selected' if q.get('acao') == k }}>{{ r }}</option>{% endfor %}</select></div>
+  <div class="campo"><label for="usuario">Usuário</label><select id="usuario" name="usuario"><option value="">Todos</option>{% for u in usuarios %}<option value="{{ u.id }}" {{ 'selected' if q.get('usuario') == u.id|string }}>{{ u.nome }}</option>{% endfor %}</select></div>
+  <div class="campo"><label for="documento">CPF/CNPJ consultado <span class="dica">— busca pelo hash, sem gravar o número</span></label><input id="documento" name="documento" type="search" autocomplete="off"></div>
+  <div><button type="submit">Filtrar</button></div>
+</form>
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>#</th><th>Momento</th><th>Usuário</th><th>Ação</th><th>Objeto</th><th>Detalhes</th><th>IP</th></tr></thead>
+  <tbody>{% for r in registros %}<tr>
+    <td>{{ r.id }}</td><td>{{ r.momento|dh }}</td><td>{{ r.usuario_email or '—' }}</td><td>{{ ACOES.get(r.acao, r.acao) }}</td>
+    <td>{% if r.objeto_tipo %}{{ r.objeto_tipo }} #{{ r.objeto_id }}{% endif %}</td>
+    <td><small>{% for k, val in r.detalhes.items() if k != 'documento_hash' %}{{ k }}: {{ val }}{% if not loop.last %} · {% endif %}{% endfor %}</small></td>
+    <td><small>{{ r.ip or '' }}</small></td></tr>{% else %}<tr><td colspan="7">Nenhum registro.</td></tr>{% endfor %}</tbody>
+</table></div>
+<p class="mudo">Exibindo os 300 registros mais recentes do filtro. A exportação inclui todos.</p>
+{% endblock %}

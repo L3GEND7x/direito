@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block titulo %}Fontes e retenção{% endblock %}
+{% block conteudo %}
+<h1>Fontes e retenção</h1>
+<p class="mudo">Credenciais e endpoints são lidos de variáveis de ambiente (cofre de segredos) e nunca exibidos aqui.</p>
+<h2>Fontes de dados</h2>
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>Fonte</th><th>Situação</th><th>Observação</th></tr></thead>
+  <tbody>{% for f in fontes %}<tr><td>{{ f.fonte }}</td><td><span class="selo {{ 'ok' if f.ok else 'alerta' }}">{{ 'Configurada' if f.ok else 'Não configurada' }}</span></td><td>{{ f.nota or '' }}</td></tr>{% endfor %}</tbody>
+</table></div>
+<h2>Regras em vigor</h2>
+<div class="cartao"><dl class="ficha">
+  <dt>Ambiente</dt><dd>{{ c.ambiente }}</dd>
+  <dt>Retenção dos resultados</dt><dd>{{ c.retencao_dias }} dias (depois disso o conteúdo e o documento em claro são apagados; ficam os metadados)</dd>
+  <dt>Limite por usuário</dt><dd>{{ c.limite_diario_consultas }} consultas a cada 24 horas</dd>
+  <dt>Aprovação de assistentes</dt><dd>{{ 'Obrigatória' if c.assistente_exige_aprovacao else 'Dispensada' }}</dd>
+  <dt>Sessão</dt><dd>expira após {{ c.sessao_inatividade_min }} min sem uso ou {{ c.sessao_maxima_horas }} h no total</dd>
+  <dt>Bloqueio de login</dt><dd>{{ c.tentativas_login_max }} tentativas → {{ c.bloqueio_login_min }} min</dd>
+</dl></div>
+<h2>Expurgo por retenção</h2>
+<div class="cartao">
+  <p>Executa agora o expurgo das consultas com prazo vencido. Em produção, agende também <code>python -m app.cli expurgar</code> diariamente.</p>
+  <form method="post" action="/admin/retencao"><input type="hidden" name="csrf" value="{{ csrf }}"><button type="submit">Executar expurgo</button></form>
+</div>
+{% endblock %}

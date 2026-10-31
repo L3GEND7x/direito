@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block titulo %}{% endblock %} · {{ nome_sistema }}</title>
+  <link rel="stylesheet" href="/static/estilo.css">
+</head>
+<body>
+{% if usuario and not tela_acesso %}
+<header class="topo">
+  <a class="marca" href="/"><span class="marca-selo">JD</span><span>{{ nome_sistema }}<span class="marca-sub">Central jurídica de consultas</span></span></a>
+  <div class="usuario-topo">
+    <span class="nome-usuario">{{ usuario.nome }} · {{ usuario.perfil_rotulo }}</span>
+    <form method="post" action="/logout"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="secundario" type="submit">Sair</button></form>
+  </div>
+</header>
+<div class="estrutura">
+  <nav class="menu" aria-label="Menu principal">
+    {% macro item(href, rotulo) %}<a href="{{ href }}" class="{{ 'ativo' if (caminho == href or (href != '/' and caminho.startswith(href))) else '' }}">{{ rotulo }}</a>{% endmacro %}
+    {{ item('/', 'Painel') }}
+    {% if usuario.perfil in (Perfil.ADVOGADO, Perfil.ASSISTENTE) %}
+      <div class="grupo">Consultas</div>
+      {{ item('/consultas/nova', 'Nova consulta') }}
+      {{ item('/consultas', 'Histórico') }}
+      <div class="grupo">Casos</div>
+      {{ item('/processos', 'Processos e demandas') }}
+      {{ item('/clientes', 'Clientes') }}
+      {{ item('/diligencias', 'Diligências patrimoniais') }}
+    {% endif %}
+    {% if usuario.perfil == Perfil.AUDITOR %}
+      <div class="grupo">Controle</div>
+      {{ item('/consultas', 'Consultas (metadados)') }}
+      {{ item('/auditoria', 'Auditoria') }}
+    {% endif %}
+    {% if usuario.perfil == Perfil.ADMIN %}
+      <div class="grupo">Administração</div>
+      {{ item('/admin/usuarios', 'Usuários') }}
+      {{ item('/admin/configuracoes', 'Fontes e retenção') }}
+      {{ item('/auditoria', 'Auditoria') }}
+    {% endif %}
+    <div class="grupo">Conta</div>
+    {{ item('/conta/senha', 'Alterar senha') }}
+  </nav>
+  <main class="conteudo">
+    {% if cfg.modo_simulado %}<div class="aviso alerta">Ambiente com conector <strong>simulado</strong> ativo: resultados marcados como fictícios não podem ser usados em processo.</div>{% endif %}
+    {% if msg %}<div class="aviso ok" role="status">{{ msg }}</div>{% endif %}
+    {% block conteudo %}{% endblock %}
+  </main>
+</div>
+{% else %}
+<main class="acesso">
+  <div class="cartao">
+    <div class="marca"><span class="marca-selo">JD</span><span>{{ nome_sistema }}</span></div>
+    {% if msg %}<div class="aviso ok" role="status">{{ msg }}</div>{% endif %}
+    {% block acesso %}{% endblock %}
+  </div>
+</main>
+{% endif %}
+</body>
+</html>

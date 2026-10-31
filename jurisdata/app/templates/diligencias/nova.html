@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block titulo %}Registrar diligência{% endblock %}
+{% block conteudo %}
+<h1>Registrar diligência patrimonial</h1>
+{% if erro %}<div class="aviso erro" role="alert">{{ erro }}</div>{% endif %}
+<div class="grade-lateral grade">
+<div class="cartao">
+<form class="formulario" method="post" action="/diligencias/nova" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="campo"><label for="processo_id">Processo</label><select id="processo_id" name="processo_id" required><option value="">Selecione</option>
+    {% for p in processos %}<option value="{{ p.id }}" {{ 'selected' if v.processo_id == p.id|string }}>{{ p.rotulo }} — {{ p.cliente.nome }}</option>{% endfor %}</select></div>
+  <div class="campos-2">
+    <div class="campo"><label for="sistema">Sistema / diligência</label><select id="sistema" name="sistema" required>{% for k, r in SISTEMAS.items() %}<option value="{{ k }}" {{ 'selected' if v.sistema == k }}>{{ r }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="status">Situação</label><select id="status" name="status" required>{% for k, r in STATUS.items() %}<option value="{{ k }}" {{ 'selected' if v.status == k }}>{{ r }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="campos-2">
+    <div class="campo"><label for="pesquisado_nome">Pesquisado (nome)</label><input id="pesquisado_nome" name="pesquisado_nome" type="text" value="{{ v.pesquisado_nome or '' }}" required></div>
+    <div class="campo"><label for="pesquisado_doc">CPF/CNPJ do pesquisado <span class="dica">— opcional</span></label><input id="pesquisado_doc" name="pesquisado_doc" type="text"></div>
+  </div>
+  <div class="campo"><label for="objetivo">Objetivo e alcance do pedido</label><textarea id="objetivo" name="objetivo" required>{{ v.objetivo or '' }}</textarea></div>
+  <div class="campos-2">
+    <div class="campo"><label for="data_pedido">Data do pedido</label><input id="data_pedido" name="data_pedido" type="text" placeholder="DD/MM/AAAA" value="{{ v.data_pedido or '' }}"></div>
+    <div class="campo"><label for="data_decisao">Data da decisão</label><input id="data_decisao" name="data_decisao" type="text" placeholder="DD/MM/AAAA" value="{{ v.data_decisao or '' }}"></div>
+  </div>
+  <div class="campos-2">
+    <div class="campo"><label for="referencia_decisao">Referência da decisão nos autos <span class="dica">— evento / ID / folhas</span></label><input id="referencia_decisao" name="referencia_decisao" type="text" value="{{ v.referencia_decisao or '' }}"></div>
+    <div class="campo"><label for="prazo">Próximo prazo</label><input id="prazo" name="prazo" type="text" placeholder="DD/MM/AAAA" value="{{ v.prazo or '' }}"></div>
+  </div>
+  <div class="acoes"><button type="submit">Registrar</button><a class="botao secundario" href="/diligencias">Cancelar</a></div>
+</form>
+</div>
+<div class="cartao">
+  <h3 class="mt-0">Checklist do pedido ao juízo</h3>
+  <ul>{% for item in CHECKLIST %}<li class="mb-p">{{ item }}</li>{% endfor %}</ul>
+  <p class="dica">O registro aqui não substitui o peticionamento nos autos.</p>
+</div>
+</div>
+{% endblock %}

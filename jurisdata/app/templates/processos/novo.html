@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block titulo %}Novo processo{% endblock %}
+{% block conteudo %}
+<h1>Novo processo ou demanda</h1>
+<p class="mudo">Informe o número CNJ. Para demandas ainda sem processo (pré-processual, consultivo), descreva a demanda.</p>
+{% if erro %}<div class="aviso erro" role="alert">{{ erro }}</div>{% endif %}
+{% if not clientes %}<div class="aviso alerta">Cadastre o cliente antes. <a href="/clientes/novo">Novo cliente</a></div>{% endif %}
+<div class="estreito cartao">
+<form class="formulario" method="post" action="/processos/novo">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="campos-2">
+    <div class="campo"><label for="numero_cnj">Número CNJ</label><input id="numero_cnj" name="numero_cnj" type="text" placeholder="0000000-00.0000.0.00.0000" value="{{ v.numero_cnj or '' }}"></div>
+    <div class="campo"><label for="identificacao_demanda">Ou identificação da demanda</label><input id="identificacao_demanda" name="identificacao_demanda" type="text" value="{{ v.identificacao_demanda or '' }}"></div>
+  </div>
+  <div class="campos-2">
+    <div class="campo"><label for="cliente_id">Cliente</label><select id="cliente_id" name="cliente_id" required><option value="">Selecione</option>
+      {% for c in clientes %}<option value="{{ c.id }}" {{ 'selected' if v.cliente_id == c.id|string }}>{{ c.nome }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="polo_cliente">Posição do cliente</label><select id="polo_cliente" name="polo_cliente">
+      {% for op in ['', 'Autor/Exequente', 'Réu/Executado', 'Acusado/Investigado', 'Vítima/Assistente de acusação', 'Querelante', 'Terceiro interessado'] %}<option value="{{ op }}" {{ 'selected' if v.polo_cliente == op }}>{{ op or 'Não informado' }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="campo"><label for="parte_contraria">Parte contrária</label><input id="parte_contraria" name="parte_contraria" type="text" value="{{ v.parte_contraria or '' }}"></div>
+  <div class="campos-2">
+    <div class="campo"><label for="orgao">Tribunal / vara</label><input id="orgao" name="orgao" type="text" value="{{ v.orgao or '' }}"></div>
+    <div class="campo"><label for="classe">Classe processual</label><input id="classe" name="classe" type="text" value="{{ v.classe or '' }}"></div>
+  </div>
+  <div class="campos-2">
+    <div class="campo"><label for="area">Área</label><select id="area" name="area" required>{% for k, r in AREAS.items() %}<option value="{{ k }}" {{ 'selected' if v.area == k }}>{{ r }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="responsavel_id">Advogado responsável</label><select id="responsavel_id" name="responsavel_id" required>
+      {% for a in advogados %}<option value="{{ a.id }}" {{ 'selected' if v.responsavel_id == a.id|string }}>{{ a.nome }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="acoes"><button type="submit">Cadastrar</button><a class="botao secundario" href="/processos">Cancelar</a></div>
+</form>
+</div>
+{% endblock %}

@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block titulo %}Diligência{% endblock %}
+{% block conteudo %}
+<div class="cabecalho"><div><h1>{{ SISTEMAS.get(d.sistema, d.sistema) }}</h1>
+<p class="mudo"><a href="/processos/{{ d.processo_id }}">{{ d.processo.rotulo }}</a> · {{ STATUS.get(d.status, d.status) }}</p></div></div>
+{% if erro %}<div class="aviso erro" role="alert">{{ erro }}</div>{% endif %}
+<div class="cartao"><dl class="ficha">
+  <dt>Pesquisado</dt><dd>{{ d.pesquisado_nome }}{% if d.pesquisado_doc_mascarado %} · {{ d.pesquisado_doc_mascarado }}{% endif %}</dd>
+  <dt>Objetivo</dt><dd>{{ d.objetivo }}</dd>
+  <dt>Pedido</dt><dd>{{ d.data_pedido|data }}</dd>
+  <dt>Decisão</dt><dd>{{ d.data_decisao|data }}{% if d.referencia_decisao %} · {{ d.referencia_decisao }}{% endif %}</dd>
+  <dt>Resultado</dt><dd>{{ d.resultado or '—' }}</dd>
+  <dt>Próximo prazo</dt><dd>{{ d.prazo|data }}</dd>
+</dl></div>
+
+<h2>Andamentos</h2>
+<ul class="linha-tempo">{% for a in d.andamentos|reverse %}
+  <li><strong>{{ STATUS.get(a.status, a.status) }}</strong> <small>· {{ a.criado_em|dh }} · {{ a.usuario.nome }}</small><br>{{ a.descricao }}</li>
+{% endfor %}</ul>
+
+<h2>Novo andamento</h2>
+<div class="estreito cartao">
+<form class="formulario" method="post" action="/diligencias/{{ d.id }}/andamento">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="campos-2">
+    <div class="campo"><label for="status">Situação</label><select id="status" name="status">{% for k, r in STATUS.items() %}<option value="{{ k }}" {{ 'selected' if d.status == k }}>{{ r }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="prazo">Próximo prazo</label><input id="prazo" name="prazo" type="text" placeholder="DD/MM/AAAA" value="{{ d.prazo.strftime('%d/%m/%Y') if d.prazo else '' }}"></div>
+  </div>
+  <div class="campos-2">
+    <div class="campo"><label for="data_decisao">Data da decisão</label><input id="data_decisao" name="data_decisao" type="text" placeholder="DD/MM/AAAA"></div>
+    <div class="campo"><label for="referencia_decisao">Referência nos autos</label><input id="referencia_decisao" name="referencia_decisao" type="text"></div>
+  </div>
+  <div class="campo"><label for="descricao">Descrição do andamento</label><textarea id="descricao" name="descricao" required></textarea></div>
+  <div class="campo"><label for="resultado">Resultado <span class="dica">— preencha quando juntado aos autos</span></label><textarea id="resultado" name="resultado">{{ d.resultado or '' }}</textarea></div>
+  <div><button type="submit">Registrar andamento</button></div>
+</form>
+</div>
+{% endblock %}

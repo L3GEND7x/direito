@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block titulo %}Nova consulta{% endblock %}
+{% block conteudo %}
+<h1>Nova consulta</h1>
+<p class="mudo">Você realizou {{ usadas }} consulta(s) nas últimas 24 horas. {% if exige_aprovacao %}Suas consultas são executadas após aprovação de um advogado.{% endif %}</p>
+{% if erro %}<div class="aviso erro" role="alert">{{ erro }}</div>{% endif %}
+{% if not opcoes %}
+  <div class="aviso alerta">Nenhuma fonte de consulta está configurada neste ambiente. O administrador deve informar as credenciais do contrato em <em>Fontes e retenção</em>.</div>
+{% elif not processos %}
+  <div class="aviso alerta">Não há processo ou demanda ativa. Toda consulta precisa estar vinculada a um. <a href="/processos">Ver processos</a></div>
+{% else %}
+<div class="estreito cartao">
+<form class="formulario" method="post" action="/consultas/nova" autocomplete="off">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <h3>1. O que consultar</h3>
+  <div class="campo"><label for="opcao">Tipo de consulta e fonte</label><select id="opcao" name="opcao" required>
+    {% for tipo, fonte, rotulo in opcoes %}<option value="{{ tipo }}|{{ fonte }}" {{ 'selected' if v.opcao == tipo ~ '|' ~ fonte }}>{{ rotulo }}</option>{% endfor %}</select></div>
+  <div class="campos-2">
+    <div class="campo"><label for="documento">CPF ou CNPJ</label><input id="documento" name="documento" type="text" required autocomplete="off" spellcheck="false"></div>
+    <div class="campo"><label for="nascimento">Data de nascimento <span class="dica">— obrigatória para CPF (DD/MM/AAAA)</span></label><input id="nascimento" name="nascimento" type="text" inputmode="numeric" placeholder="DD/MM/AAAA" autocomplete="off"></div>
+  </div>
+  <p class="dica">A API oficial de CPF exige CPF e data de nascimento; ela não informa a data a partir do CPF.</p>
+
+  <h3>2. Vínculo e finalidade</h3>
+  <div class="campo"><label for="processo_id">Processo / demanda</label><select id="processo_id" name="processo_id" required><option value="">Selecione</option>
+    {% for p in processos %}<option value="{{ p.id }}" {{ 'selected' if v.processo_id == p.id|string }}>{{ p.rotulo }} — {{ p.cliente.nome }}</option>{% endfor %}</select></div>
+  <div class="campos-2">
+    <div class="campo"><label for="finalidade_tipo">Finalidade</label><select id="finalidade_tipo" name="finalidade_tipo" required><option value="">Selecione</option>
+      {% for k, r in FINALIDADES.items() %}<option value="{{ k }}" {{ 'selected' if v.finalidade_tipo == k }}>{{ r }}</option>{% endfor %}</select></div>
+    <div class="campo"><label for="base_legal">Base legal (LGPD)</label><select id="base_legal" name="base_legal" required>
+      {% for k, r in BASES.items() %}<option value="{{ k }}" {{ 'selected' if v.base_legal == k }}>{{ r }}</option>{% endfor %}</select></div>
+  </div>
+  <div class="campo"><label for="justificativa">Justificativa concreta <span class="dica">— mínimo {{ JUST_MIN }} caracteres; explique por que esta consulta é necessária neste caso</span></label>
+    <textarea id="justificativa" name="justificativa" required minlength="{{ JUST_MIN }}">{{ v.justificativa or '' }}</textarea></div>
+  <label class="marcacao"><input type="checkbox" name="declaracao" value="1" required> {{ DECLARACAO }}</label>
+  <div class="acoes"><button type="submit">{{ 'Enviar para aprovação' if exige_aprovacao else 'Consultar' }}</button><a class="botao secundario" href="/consultas">Cancelar</a></div>
+</form>
+</div>
+{% endif %}
+{% endblock %}

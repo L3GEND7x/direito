@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block titulo %}{{ p.rotulo }}{% endblock %}
+{% block conteudo %}
+<div class="cabecalho">
+  <div><h1>{{ p.rotulo }}</h1><p class="mudo">{{ AREAS.get(p.area, p.area) }} · <span class="selo {{ 'ativo' if p.ativo else 'inativo' }}">{{ 'Ativo' if p.ativo else 'Encerrado em ' ~ (p.encerrado_em|dh) }}</span></p></div>
+  {% if p.ativo %}<div class="acoes">
+    <a class="botao" href="/consultas/nova?processo={{ p.id }}">Consultar vinculado</a>
+    <a class="botao secundario" href="/diligencias/nova?processo={{ p.id }}">Registrar diligência</a>
+  </div>{% endif %}
+</div>
+<div class="cartao"><dl class="ficha">
+  <dt>Cliente</dt><dd>{{ p.cliente.nome }}{% if p.polo_cliente %} · {{ p.polo_cliente }}{% endif %}</dd>
+  <dt>Parte contrária</dt><dd>{{ p.parte_contraria or '—' }}</dd>
+  <dt>Tribunal / vara</dt><dd>{{ p.orgao or '—' }}</dd>
+  <dt>Classe</dt><dd>{{ p.classe or '—' }}</dd>
+  <dt>Responsável</dt><dd>{{ p.responsavel.nome }}</dd>
+  {% if p.numero_cnj and p.identificacao_demanda %}<dt>Demanda</dt><dd>{{ p.identificacao_demanda }}</dd>{% endif %}
+</dl></div>
+
+<h2>Consultas vinculadas</h2>
+{% if consultas %}
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>Nº</th><th>Tipo</th><th>Documento</th><th>Situação</th><th>Solicitante</th><th>Data</th></tr></thead>
+  <tbody>{% for c in consultas %}<tr><td><a href="/consultas/{{ c.id }}">#{{ c.id }}</a></td><td>{{ TIPOS.get(c.tipo, c.tipo) }}</td><td>{{ c.documento_mascarado }}</td>
+    <td><span class="selo {{ c.status.value }}">{{ c.status_rotulo }}</span></td><td>{{ c.solicitante.nome }}</td><td>{{ c.solicitada_em|dh }}</td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="mudo">Nenhuma consulta vinculada{{ ' por você' if usuario.perfil == Perfil.ASSISTENTE }}.</p>{% endif %}
+
+<h2>Diligências patrimoniais</h2>
+{% if diligencias %}
+<div class="tabela-rolagem"><table>
+  <thead><tr><th>Sistema</th><th>Pesquisado</th><th>Situação</th><th>Prazo</th><th></th></tr></thead>
+  <tbody>{% for d in diligencias %}<tr><td>{{ SISTEMAS.get(d.sistema, d.sistema) }}</td><td>{{ d.pesquisado_nome }}</td><td>{{ STATUS_DILIGENCIA.get(d.status, d.status) }}</td><td>{{ d.prazo|data }}</td><td><a href="/diligencias/{{ d.id }}">Abrir</a></td></tr>{% endfor %}</tbody>
+</table></div>
+{% else %}<p class="mudo">Nenhuma diligência registrada.</p>{% endif %}
+
+{% if p.ativo and usuario.perfil == Perfil.ADVOGADO %}
+<h2>Encerramento</h2>
+<form method="post" action="/processos/{{ p.id }}/encerrar"><input type="hidden" name="csrf" value="{{ csrf }}">
+<p class="mudo">Após o encerramento, novas consultas e diligências não podem ser vinculadas a este item.</p>
+<button class="secundario" type="submit">Encerrar processo/demanda</button></form>
+{% endif %}
+{% endblock %}

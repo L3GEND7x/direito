@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block titulo %}Alterar senha{% endblock %}
+{% block conteudo %}
+<h1>Alterar senha</h1>
+{% if obrigatoria %}<div class="aviso alerta">Defina uma senha pessoal para continuar. A senha temporária não pode ser mantida.</div>{% endif %}
+{% for e in erros %}<div class="aviso erro" role="alert">{{ e }}</div>{% endfor %}
+<div class="estreito-p cartao">
+<form class="formulario" method="post" action="/conta/senha">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <div class="campo"><label for="atual">Senha atual</label><input id="atual" name="atual" type="password" required autocomplete="current-password"></div>
+  <div class="campo"><label for="nova">Nova senha <span class="dica">— mínimo de 12 caracteres, com maiúsculas, minúsculas, número e símbolo</span></label><input id="nova" name="nova" type="password" required minlength="12" autocomplete="new-password"></div>
+  <div class="campo"><label for="confirmacao">Confirme a nova senha</label><input id="confirmacao" name="confirmacao" type="password" required minlength="12" autocomplete="new-password"></div>
+  <div><button type="submit">Salvar senha</button></div>
+</form>
+</div>
+<p class="mudo">Ao trocar a senha, suas outras sessões abertas são encerradas.</p>
+{% endblock %}

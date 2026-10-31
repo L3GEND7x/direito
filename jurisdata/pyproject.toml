@@ -1,0 +1,10 @@
+[project]
+name = "jurisdata"
+version = "0.1.0"
+description = "JurisData — central jurídica de consultas para uso interno do escritório"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]
